@@ -2,7 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Order;
+use App\Models\OrderFulfillment;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Manage orders for customers and vendors/admin.
@@ -10,21 +13,104 @@ use Illuminate\Http\Request;
 class OrderController extends Controller
 {
     /**
-     * List orders (customer) or all orders (vendor/admin).
+     * List orders for the authenticated user.
      */
     public function index(Request $request)
     {
-        // TODO: implement order listing with role checks.
-        return response()->json(['message' => 'Order listing not implemented']);
+        $user = $request->user();
+
+        $query = Order::with(['items.sku.product', 'shippingAddress', 'payments'])
+            ->where('user_id', $user->id);
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+
+        if ($request->filled('payment_status')) {
+            $query->where('payment_status', $request->payment_status);
+        }
+
+        $orders = $query->latest('placed_at')->paginate(20);
+
+        return response()->json($orders);
     }
 
     /**
      * Show a single order.
      */
-    public function show($id)
+    public function show(Request $request, $id)
     {
-        // TODO: load order with items and related data.
-        return response()->json(['message' => 'Order detail not implemented']);
+        $user = $request->user();
+
+        $order = Order::with([
+            'items.sku.product',
+            'shippingAddress',
+            'payments',
+            'fulfillments.warehouse'
+        ])
+        ->where('user_id', $user->id)
+        ->findOrFail($id);
+
+        return response()->json($order);
+    }
+
+    /**
+     * Cancel an order (only if status is pending).
+     */
+    public function cancel(Request $request, $id)
+    {
+        $user = $request->user();
+
+        $order = Order::where('user_id', $user->id)->findOrFail($id);
+
+        if (!in_array($order->status, ['pending', 'processing'])) {
+            return response()->json([
+                'message' => 'Order cannot be cancelled at this stage',
+            ], 422);
+        }
+
+        DB::transaction(function () use ($order) {
+            // Release reserved inventory
+            foreach ($order->items as $item) {
+                $stock = $item->sku->stocks()->lockForUpdate()->first();
+                if ($stock && $stock->reserved >= $item->quantity) {
+                    $stock->reserved -= $item->quantity;
+                    $stock->save();
+                }
+            }
+
+            $order->update([
+                'status' => 'cancelled',
+                'payment_status' => 'refunded',
+            ]);
+        });
+
+        return response()->json([
+            'message' => 'Order cancelled successfully',
+            'order' => $order->fresh(),
+        ]);
+    }
+
+    /**
+     * List all orders for vendor (their products only).
+     */
+    public function vendorOrders(Request $request)
+    {
+        $user = $request->user();
+
+        // Get orders that contain items from this vendor's products
+        $query = Order::with(['items.sku.product', 'shippingAddress', 'user'])
+            ->whereHas('items.sku.product', function ($q) use ($user) {
+                $q->where('vendor_id', $user->id);
+            });
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+
+        $orders = $query->latest('placed_at')->paginate(20);
+
+        return response()->json($orders);
     }
 
     /**
@@ -33,18 +119,55 @@ class OrderController extends Controller
     public function updateStatus(Request $request, $id)
     {
         $request->validate([
-            'status' => 'required|string',
+            'status' => 'required|string|in:pending,processing,shipped,delivered,cancelled',
         ]);
-        // TODO: update order status and trigger notifications.
-        return response()->json(['message' => 'Order status updated']);
+
+        $user = $request->user();
+
+        // Verify vendor owns products in this order
+        $order = Order::whereHas('items.sku.product', function ($q) use ($user) {
+            $q->where('vendor_id', $user->id);
+        })->findOrFail($id);
+
+        $order->update(['status' => $request->status]);
+
+        return response()->json([
+            'message' => 'Order status updated successfully',
+            'order' => $order->fresh(),
+        ]);
     }
 
     /**
-     * Fulfill an order (vendor/admin) – creates shipments.
+     * Create fulfillment for an order.
      */
     public function fulfill(Request $request, $id)
     {
-        // TODO: split order by vendor/warehouse and create fulfillment records.
-        return response()->json(['message' => 'Order fulfillment not implemented']);
+        $request->validate([
+            'warehouse_id' => 'required|exists:warehouses,id',
+            'tracking_no' => 'nullable|string',
+            'shipment_provider' => 'nullable|string',
+        ]);
+
+        $user = $request->user();
+
+        $order = Order::whereHas('items.sku.product', function ($q) use ($user) {
+            $q->where('vendor_id', $user->id);
+        })->findOrFail($id);
+
+        $fulfillment = OrderFulfillment::create([
+            'order_id' => $order->id,
+            'warehouse_id' => $request->warehouse_id,
+            'tracking_no' => $request->tracking_no,
+            'shipment_provider' => $request->shipment_provider,
+            'status' => 'shipped',
+        ]);
+
+        // Update order status
+        $order->update(['status' => 'shipped']);
+
+        return response()->json([
+            'message' => 'Order fulfilled successfully',
+            'fulfillment' => $fulfillment,
+        ], 201);
     }
 }
