@@ -23,9 +23,9 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         // Create roles
-        $adminRole = Role::firstOrCreate(['name' => 'Admin']);
-        $vendorRole = Role::firstOrCreate(['name' => 'Vendor']);
-        $customerRole = Role::firstOrCreate(['name' => 'Customer']);
+        $adminRole = Role::firstOrCreate(['name' => 'Admin', 'guard_name' => 'sanctum']);
+        $vendorRole = Role::firstOrCreate(['name' => 'Vendor', 'guard_name' => 'sanctum']);
+        $customerRole = Role::firstOrCreate(['name' => 'Customer', 'guard_name' => 'sanctum']);
 
         // Create admin user
         $admin = User::firstOrCreate(
@@ -162,6 +162,9 @@ class DatabaseSeeder extends Seeder
         ShippingMethod::firstOrCreate(['name' => 'standard']);
         ShippingMethod::firstOrCreate(['name' => 'express']);
         ShippingMethod::firstOrCreate(['name' => 'overnight']);
+
+        //call permissions seeder
+        $this->call(PermissionsSeeder::class);
 
         $this->command->info('Database seeded successfully!');
     }

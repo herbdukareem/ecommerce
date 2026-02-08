@@ -11,6 +11,7 @@ class Product extends Model
 
     protected $fillable = [
         'vendor_id', 'title', 'slug', 'description', 'base_price', 'status',
+        'name', 'price', 'image', // New fields for admin product management
     ];
 
     /**
@@ -30,6 +31,14 @@ class Product extends Model
     }
 
     /**
+     * A product has many images.
+     */
+    public function images()
+    {
+        return $this->hasMany(ProductImage::class)->orderBy('order');
+    }
+
+    /**
      * Categories associated with the product.
      */
     public function categories()
@@ -43,5 +52,21 @@ class Product extends Model
     public function attributes()
     {
         return $this->belongsToMany(Attribute::class);
+    }
+
+    /**
+     * Reviews for this product.
+     */
+    public function reviews()
+    {
+        return $this->hasMany(Review::class);
+    }
+
+    /**
+     * Get average rating for this product.
+     */
+    public function averageRating()
+    {
+        return $this->reviews()->where('is_approved', true)->avg('rating');
     }
 }

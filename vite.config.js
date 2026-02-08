@@ -1,10 +1,30 @@
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
+import laravel from 'laravel-vite-plugin';
 
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [
+    laravel({
+      input: ['resources/js/main.js'],
+      refresh: true,
+    }),
+    vue({
+      template: {
+        transformAssetUrls: {
+          base: null,
+          includeAbsolute: false,
+        },
+      },
+    }),
+  ],
   server: {
+    host: '127.0.0.1',
     port: 5173,
+    strictPort: false,
+    cors: true,
+    hmr: {
+      host: '127.0.0.1',
+    },
     proxy: {
       '/api': {
         target: 'http://localhost:8000',

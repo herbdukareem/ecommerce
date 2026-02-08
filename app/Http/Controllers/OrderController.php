@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\Order;
 use App\Models\OrderFulfillment;
+use App\Mail\ShippingUpdate;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 
 /**
  * Manage orders for customers and vendors/admin.
@@ -164,6 +166,10 @@ class OrderController extends Controller
 
         // Update order status
         $order->update(['status' => 'shipped']);
+
+        // Send shipping update email
+        $order->load(['user', 'shippingAddress']);
+        Mail::to($order->user->email)->send(new ShippingUpdate($order, $fulfillment));
 
         return response()->json([
             'message' => 'Order fulfilled successfully',

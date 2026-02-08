@@ -24,16 +24,10 @@ return new class extends Migration
             $table->foreignId('product_id')->constrained()->cascadeOnDelete();
             $table->primary(['attribute_id', 'product_id']);
         });
-        Schema::create('sku_attribute_value', function (Blueprint $table) {
-            $table->foreignId('sku_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('attribute_value_id')->constrained()->cascadeOnDelete();
-            $table->primary(['sku_id', 'attribute_value_id']);
-        });
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('sku_attribute_value');
         Schema::dropIfExists('attribute_product');
         Schema::dropIfExists('attribute_values');
         Schema::dropIfExists('attributes');

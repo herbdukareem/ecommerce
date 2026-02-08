@@ -193,6 +193,7 @@ class CartController extends Controller
 
     /**
      * Merge guest cart with user cart after login.
+     * For API-based apps using Sanctum, we accept guest_cart_id from the request.
      */
     public function merge(Request $request)
     {
@@ -201,13 +202,20 @@ class CartController extends Controller
             return response()->json(['message' => 'User not authenticated'], 401);
         }
 
-        $sessionId = $request->session()->getId();
-        $guestCart = Cart::where('session_id', $sessionId)
+        // For API apps, accept guest_cart_id from request body
+        $guestCartId = $request->input('guest_cart_id');
+
+        if (!$guestCartId) {
+            // No guest cart to merge, just return success
+            return response()->json(['message' => 'No guest cart to merge']);
+        }
+
+        $guestCart = Cart::where('id', $guestCartId)
             ->whereNull('user_id')
             ->first();
 
         if (!$guestCart) {
-            return response()->json(['message' => 'No guest cart to merge']);
+            return response()->json(['message' => 'Guest cart not found or already merged']);
         }
 
         $userCart = Cart::firstOrCreate(['user_id' => $user->id]);

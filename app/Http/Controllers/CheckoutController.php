@@ -9,8 +9,10 @@ use App\Models\Address;
 use App\Models\Payment;
 use App\Services\InventoryService;
 use App\Services\ShippingRateService;
+use App\Mail\OrderConfirmation;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -187,6 +189,9 @@ class CheckoutController extends Controller
 
                 return $order;
             });
+
+            // Send order confirmation email
+            Mail::to($user->email)->send(new OrderConfirmation($order));
 
             return response()->json([
                 'message' => 'Order placed successfully',

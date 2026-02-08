@@ -25,6 +25,13 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'is_vendor',
+        'email_verified_at',
+        'phone',
+        'address',
+        'city',
+        'state',
+        'status',
     ];
 
     /**
@@ -44,5 +51,43 @@ class User extends Authenticatable
      */
     protected $casts = [
         'email_verified_at' => 'datetime',
+        'is_vendor' => 'boolean',
     ];
+
+    /**
+     * Append is_verified to JSON responses
+     */
+    protected $appends = ['is_verified'];
+
+    /**
+     * Check if user is verified
+     */
+    public function getIsVerifiedAttribute()
+    {
+        return !is_null($this->email_verified_at);
+    }
+
+    /**
+     * Get products created by this vendor
+     */
+    public function products()
+    {
+        return $this->hasMany(Product::class, 'vendor_id');
+    }
+
+    /**
+     * Get orders placed by this user
+     */
+    public function orders()
+    {
+        return $this->hasMany(Order::class);
+    }
+
+    /**
+     * Get warehouses owned by this vendor
+     */
+    public function warehouses()
+    {
+        return $this->hasMany(Warehouse::class, 'vendor_id');
+    }
 }

@@ -4,6 +4,8 @@ import router from './router';
 import { createPinia } from 'pinia';
 import axios from 'axios';
 import './index.css';
+import '@mdi/font/css/materialdesignicons.css';
+import './styles/animations.css';
 
 // Configure axios defaults
 axios.defaults.baseURL = import.meta.env.VITE_API_URL || '';
@@ -37,5 +39,15 @@ app.use(router);
 import { useAuthStore } from './stores/auth';
 const authStore = useAuthStore();
 authStore.initializeAuth();
+
+// Initialize theme
+import { useThemeStore } from './stores/theme';
+const themeStore = useThemeStore();
+themeStore.initTheme();
+
+// Initialize settings (currency, etc.)
+import { useSettingsStore } from './stores/settings';
+const settingsStore = useSettingsStore();
+settingsStore.initSettings();
 
 app.mount('#app');

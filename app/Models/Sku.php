@@ -10,10 +10,12 @@ class Sku extends Model
     use HasFactory;
     protected $fillable = [
         'product_id', 'sku_code', 'price', 'cost', 'weight', 'length', 'width', 'height', 'active',
+        'stock_quantity', 'attributes', // New fields for variant management
     ];
 
     protected $casts = [
         'active' => 'boolean',
+        'attributes' => 'array',
     ];
 
     public function product()
