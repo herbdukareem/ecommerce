@@ -13,6 +13,7 @@ use App\Models\Stock;
 use App\Models\ShippingZone;
 use App\Models\ShippingZoneRule;
 use App\Models\ShippingMethod;
+use App\Models\DeliveryPartner;
 use Spatie\Permission\Models\Role;
 
 class DatabaseSeeder extends Seeder
@@ -22,40 +23,44 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
+        // Seed permission matrix first so role records are present before user assignment.
+        $this->call(PermissionsSeeder::class);
+        $this->call(LocationSeeder::class);
+
         // Create roles
         $adminRole = Role::firstOrCreate(['name' => 'Admin', 'guard_name' => 'sanctum']);
         $vendorRole = Role::firstOrCreate(['name' => 'Vendor', 'guard_name' => 'sanctum']);
         $customerRole = Role::firstOrCreate(['name' => 'Customer', 'guard_name' => 'sanctum']);
 
-        // Create admin user
-        $admin = User::firstOrCreate(
+        // Create demo admin user and enforce demo credential consistency for local/dev seed runs.
+        $admin = User::updateOrCreate(
             ['email' => 'admin@example.com'],
             [
                 'name' => 'Admin User',
                 'password' => Hash::make('password'),
             ]
         );
-        $admin->assignRole($adminRole);
+        $admin->syncRoles([$adminRole]);
 
         // Create vendor user
-        $vendor = User::firstOrCreate(
+        $vendor = User::updateOrCreate(
             ['email' => 'vendor@example.com'],
             [
                 'name' => 'Vendor User',
                 'password' => Hash::make('password'),
             ]
         );
-        $vendor->assignRole($vendorRole);
+        $vendor->syncRoles([$vendorRole]);
 
         // Create customer user
-        $customer = User::firstOrCreate(
+        $customer = User::updateOrCreate(
             ['email' => 'customer@example.com'],
             [
                 'name' => 'Customer User',
                 'password' => Hash::make('password'),
             ]
         );
-        $customer->assignRole($customerRole);
+        $customer->syncRoles([$customerRole]);
 
         // Create categories
         $electronics = Category::firstOrCreate(['name' => 'Electronics', 'parent_id' => null]);
@@ -143,28 +148,134 @@ class DatabaseSeeder extends Seeder
         }
 
         // Create shipping zones and methods
-        $zone = ShippingZone::firstOrCreate(
-            ['name' => 'Domestic'],
-            ['region' => 'US']
-        );
-
-        ShippingZoneRule::firstOrCreate(
-            ['shipping_zone_id' => $zone->id, 'rule_type' => 'flat'],
+        $standardMethod = ShippingMethod::updateOrCreate(
+            ['code' => 'standard'],
             [
-                'config' => [
-                    'rate' => 1000,
-                    'method' => 'standard',
-                    'name' => 'Standard Shipping',
-                ],
+                'name' => 'Standard Delivery',
+                'description' => '2-4 business days within major cities',
+                'base_fee' => 2500,
+                'per_kg_surcharge' => 300,
+                'supports_cod' => true,
+                'active' => true,
             ]
         );
 
-        ShippingMethod::firstOrCreate(['name' => 'standard']);
-        ShippingMethod::firstOrCreate(['name' => 'express']);
-        ShippingMethod::firstOrCreate(['name' => 'overnight']);
+        $expressMethod = ShippingMethod::updateOrCreate(
+            ['code' => 'express'],
+            [
+                'name' => 'Express Delivery',
+                'description' => 'Same or next day in selected areas',
+                'base_fee' => 4500,
+                'per_kg_surcharge' => 500,
+                'express_surcharge' => 1000,
+                'supports_cod' => false,
+                'active' => true,
+            ]
+        );
 
-        //call permissions seeder
-        $this->call(PermissionsSeeder::class);
+        $pickupMethod = ShippingMethod::updateOrCreate(
+            ['code' => 'pickup'],
+            [
+                'name' => 'Pickup Station',
+                'description' => 'Collect from pickup station',
+                'base_fee' => 0,
+                'is_pickup' => true,
+                'supports_cod' => false,
+                'active' => true,
+            ]
+        );
+
+        $lagosZone = ShippingZone::updateOrCreate(
+            ['name' => 'Lagos Metro'],
+            [
+                'region' => 'Lagos',
+                'coverage_states' => ['lagos'],
+                'coverage_cities' => ['ikeja', 'lekki', 'yaba', 'surulere'],
+                'default_fee' => 2000,
+                'active' => true,
+            ]
+        );
+
+        $fallbackZone = ShippingZone::updateOrCreate(
+            ['name' => 'Nationwide Fallback'],
+            [
+                'region' => 'Nigeria',
+                'default_fee' => 4500,
+                'is_fallback' => true,
+                'active' => true,
+            ]
+        );
+
+        ShippingZoneRule::updateOrCreate(
+            ['shipping_zone_id' => $lagosZone->id, 'shipping_method_id' => $standardMethod->id, 'rule_type' => 'flat'],
+            [
+                'config' => [
+                    'rate' => 2000,
+                    'method' => 'standard',
+                    'name' => 'Lagos Standard Delivery',
+                    'cod_available' => true,
+                ],
+                'priority' => 10,
+                'active' => true,
+            ]
+        );
+
+        ShippingZoneRule::updateOrCreate(
+            ['shipping_zone_id' => $lagosZone->id, 'shipping_method_id' => $expressMethod->id, 'rule_type' => 'flat'],
+            [
+                'config' => [
+                    'rate' => 3500,
+                    'method' => 'express',
+                    'name' => 'Lagos Express Delivery',
+                    'cod_available' => false,
+                ],
+                'priority' => 20,
+                'active' => true,
+            ]
+        );
+
+        ShippingZoneRule::updateOrCreate(
+            ['shipping_zone_id' => $fallbackZone->id, 'shipping_method_id' => $standardMethod->id, 'rule_type' => 'flat'],
+            [
+                'config' => [
+                    'rate' => 4500,
+                    'method' => 'standard',
+                    'name' => 'Outside Lagos Standard Delivery',
+                    'cod_available' => true,
+                ],
+                'priority' => 100,
+                'active' => true,
+            ]
+        );
+
+        ShippingZoneRule::updateOrCreate(
+            ['shipping_zone_id' => $fallbackZone->id, 'shipping_method_id' => $pickupMethod->id, 'rule_type' => 'flat'],
+            [
+                'config' => [
+                    'rate' => 0,
+                    'method' => 'pickup',
+                    'name' => 'Pickup Station',
+                    'cod_available' => false,
+                ],
+                'priority' => 200,
+                'active' => true,
+            ]
+        );
+
+        DeliveryPartner::updateOrCreate(
+            ['name' => 'Lagos Dispatch Rider'],
+            [
+                'phone' => '08030000000',
+                'email' => 'dispatch@example.com',
+                'company_name' => 'Ashlab Local Dispatch',
+                'coverage_states' => ['lagos'],
+                'coverage_cities' => ['ikeja', 'lekki', 'yaba', 'surulere'],
+                'coverage_areas' => ['allen', 'admiralty', 'tejuosho'],
+                'pricing_notes' => 'Manual dispatch rates apply for oversized orders.',
+                'status' => 'active',
+                'vehicle_type' => 'motorbike',
+            ]
+        );
 
         $this->command->info('Database seeded successfully!');
     }

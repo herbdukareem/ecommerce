@@ -135,6 +135,8 @@ class ReviewController extends Controller
             ->where('user_id', $user->id)
             ->firstOrFail();
 
+        $this->authorize('update', $review);
+
         $review->update($request->only(['rating', 'title', 'comment']));
 
         return response()->json([
@@ -152,6 +154,8 @@ class ReviewController extends Controller
         $review = Review::where('id', $reviewId)
             ->where('user_id', $user->id)
             ->firstOrFail();
+
+        $this->authorize('delete', $review);
 
         // Delete associated images
         foreach ($review->images as $image) {

@@ -32,6 +32,12 @@ class ShippingController extends Controller
             'name' => 'required|string|max:255',
             'region' => 'required|string|max:255',
             'description' => 'nullable|string',
+            'coverage_states' => 'nullable|array',
+            'coverage_cities' => 'nullable|array',
+            'coverage_areas' => 'nullable|array',
+            'default_fee' => 'nullable|numeric|min:0',
+            'is_fallback' => 'sometimes|boolean',
+            'active' => 'sometimes|boolean',
         ]);
 
         $zone = ShippingZone::create($data);
@@ -53,6 +59,12 @@ class ShippingController extends Controller
             'name' => 'sometimes|string|max:255',
             'region' => 'sometimes|string|max:255',
             'description' => 'nullable|string',
+            'coverage_states' => 'nullable|array',
+            'coverage_cities' => 'nullable|array',
+            'coverage_areas' => 'nullable|array',
+            'default_fee' => 'nullable|numeric|min:0',
+            'is_fallback' => 'sometimes|boolean',
+            'active' => 'sometimes|boolean',
         ]);
 
         $zone->update($data);
@@ -92,8 +104,11 @@ class ShippingController extends Controller
     {
         $data = $request->validate([
             'shipping_zone_id' => 'required|exists:shipping_zones,id',
+            'shipping_method_id' => 'nullable|exists:shipping_methods,id',
             'rule_type' => 'required|in:flat,weight_based,price_based,free',
             'config' => 'required|array',
+            'priority' => 'nullable|integer|min:1|max:1000',
+            'active' => 'sometimes|boolean',
         ]);
 
         $rule = ShippingZoneRule::create($data);
@@ -112,8 +127,11 @@ class ShippingController extends Controller
         $rule = ShippingZoneRule::findOrFail($id);
 
         $data = $request->validate([
+            'shipping_method_id' => 'nullable|exists:shipping_methods,id',
             'rule_type' => 'sometimes|in:flat,weight_based,price_based,free',
             'config' => 'sometimes|array',
+            'priority' => 'nullable|integer|min:1|max:1000',
+            'active' => 'sometimes|boolean',
         ]);
 
         $rule->update($data);
@@ -153,8 +171,20 @@ class ShippingController extends Controller
     {
         $data = $request->validate([
             'name' => 'required|string|max:255|unique:shipping_methods',
+            'code' => 'nullable|string|max:100|unique:shipping_methods,code',
+            'description' => 'nullable|string',
+            'base_fee' => 'nullable|numeric|min:0',
+            'per_kg_surcharge' => 'nullable|numeric|min:0',
+            'express_surcharge' => 'nullable|numeric|min:0',
+            'free_shipping_threshold' => 'nullable|numeric|min:0',
+            'supports_cod' => 'sometimes|boolean',
+            'is_pickup' => 'sometimes|boolean',
             'active' => 'boolean',
         ]);
+
+        if (empty($data['code'])) {
+            $data['code'] = \Illuminate\Support\Str::slug($data['name'], '_');
+        }
 
         $method = ShippingMethod::create($data);
 

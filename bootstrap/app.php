@@ -13,13 +13,22 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->api(prepend: [
+            \App\Http\Middleware\RequestLoggingMiddleware::class,
+            \App\Http\Middleware\SecureHeadersMiddleware::class,
             \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
+        ]);
+
+        $middleware->web(prepend: [
+            \App\Http\Middleware\SecureHeadersMiddleware::class,
         ]);
 
         $middleware->alias([
             'verified' => \App\Http\Middleware\EnsureEmailIsVerified::class,
             'admin' => \App\Http\Middleware\AdminMiddleware::class,
             'vendor' => \App\Http\Middleware\VendorMiddleware::class,
+            'customer' => \App\Http\Middleware\CustomerMiddleware::class,
+            'request.log' => \App\Http\Middleware\RequestLoggingMiddleware::class,
+            'secure.headers' => \App\Http\Middleware\SecureHeadersMiddleware::class,
         ]);
 
         //

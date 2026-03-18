@@ -60,11 +60,11 @@
                 class="absolute right-0 mt-2 w-48 bg-white rounded-md border border-gray-200 shadow-lg py-1"
               >
                 <router-link
-                  to="/dashboard"
+                  to="/account"
                   class="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
                 >
                   <i class="mdi mdi-view-dashboard"></i>
-                  <span>Dashboard</span>
+                  <span>My Account</span>
                 </router-link>
                 <router-link
                   to="/orders"
@@ -72,13 +72,6 @@
                 >
                   <i class="mdi mdi-package-variant"></i>
                   <span>My Orders</span>
-                </router-link>
-                <router-link
-                  to="/wishlist"
-                  class="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                >
-                  <i class="mdi mdi-heart-outline"></i>
-                  <span>Wishlist</span>
                 </router-link>
                 <div class="border-t border-gray-200 my-1"></div>
                 <button
@@ -124,7 +117,7 @@
         <router-link
           v-for="category in categories"
           :key="category.id"
-          :to="`/products?category=${category.slug}`"
+          :to="`/products?category_id=${category.id}`"
           class="text-sm text-gray-700 hover:text-orange-500 transition-colors"
         >
           {{ category.name }}
@@ -136,32 +129,42 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import FlashBanner from '../ui/FlashBanner.vue';
+import { useAuthStore } from '../../stores/auth';
+import { useCartStore } from '../../stores/cart';
+import { useCatalogStore } from '../../stores/catalog';
 
 const router = useRouter();
 const showUserMenu = ref(false);
+const authStore = useAuthStore();
+const cartStore = useCartStore();
+const catalogStore = useCatalogStore();
 
-// Mock data - replace with actual store/API calls
-const isAuthenticated = ref(true);
-const cartCount = ref(3);
-const categories = ref([
-  { id: 1, name: 'Electronics', slug: 'electronics' },
-  { id: 2, name: 'Fashion', slug: 'fashion' },
-  { id: 3, name: 'Home & Garden', slug: 'home-garden' },
-  { id: 4, name: 'Sports', slug: 'sports' },
-  { id: 5, name: 'Books', slug: 'books' },
-]);
+const isAuthenticated = computed(() => authStore.isAuthenticated);
+const cartCount = computed(() => cartStore.cartItemCount || 0);
+const categories = computed(() => (catalogStore.categories || []).slice(0, 6));
 
 const toggleUserMenu = () => {
   showUserMenu.value = !showUserMenu.value;
 };
 
-const logout = () => {
-  // Implement logout logic
+const logout = async () => {
+  await authStore.logout();
+  cartStore.$reset();
   showUserMenu.value = false;
-  router.push('/login');
+  router.push('/');
 };
+
+onMounted(async () => {
+  if (!catalogStore.categories.length) {
+    await catalogStore.fetchCategories();
+  }
+
+  if (authStore.isAuthenticated) {
+    await cartStore.loadCart();
+  }
+});
 </script>
 

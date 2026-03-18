@@ -16,6 +16,25 @@ export const useCartStore = defineStore('cart', {
   },
 
   actions: {
+    getErrorMessage(error, fallbackMessage) {
+      const status = error?.response?.status;
+      const data = error?.response?.data;
+
+      if (status === 401) {
+        return 'Please login to manage your cart.';
+      }
+
+      if (status === 419) {
+        return 'Your session expired. Refresh and try again.';
+      }
+
+      if (status === 422) {
+        return data?.message || fallbackMessage;
+      }
+
+      return data?.message || fallbackMessage;
+    },
+
     async loadCart() {
       try {
         this.loading = true;
@@ -37,8 +56,7 @@ export const useCartStore = defineStore('cart', {
         await this.loadCart();
         return { success: true };
       } catch (error) {
-        console.error('Failed to add item:', error);
-        return { success: false, error: error.response?.data?.message };
+        return { success: false, error: this.getErrorMessage(error, 'Unable to add item to cart.') };
       } finally {
         this.loading = false;
       }
@@ -47,12 +65,11 @@ export const useCartStore = defineStore('cart', {
     async updateItem(itemId, quantity) {
       try {
         this.loading = true;
-        await axios.patch(`/api/cart/items/${itemId}`, { quantity });
+        await axios.put(`/api/cart/items/${itemId}`, { quantity });
         await this.loadCart();
         return { success: true };
       } catch (error) {
-        console.error('Failed to update item:', error);
-        return { success: false, error: error.response?.data?.message };
+        return { success: false, error: this.getErrorMessage(error, 'Unable to update cart item.') };
       } finally {
         this.loading = false;
       }
@@ -65,8 +82,7 @@ export const useCartStore = defineStore('cart', {
         await this.loadCart();
         return { success: true };
       } catch (error) {
-        console.error('Failed to remove item:', error);
-        return { success: false, error: error.response?.data?.message };
+        return { success: false, error: this.getErrorMessage(error, 'Unable to remove item from cart.') };
       } finally {
         this.loading = false;
       }

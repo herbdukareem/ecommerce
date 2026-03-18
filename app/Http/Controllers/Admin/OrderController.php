@@ -3,19 +3,28 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\AdjustInventoryJob;
+use App\Jobs\ExportOrdersJob;
+use App\Models\DeliveryPartner;
 use App\Models\Order;
 use App\Models\OrderFulfillment;
+use App\Services\Logistics\LogisticsManager;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class OrderController extends Controller
 {
+    public function __construct(private readonly LogisticsManager $logisticsManager)
+    {
+    }
+
     /**
      * Display a listing of orders
      */
     public function index(Request $request)
     {
-        $query = Order::with(['user', 'items.sku.product', 'shippingAddress']);
+        $query = Order::with(['user', 'items.sku.product', 'shippingAddress', 'deliveryPartner', 'shippingMethod', 'shippingZone']);
 
         // Search
         if ($request->filled('search')) {
@@ -67,7 +76,10 @@ class OrderController extends Controller
             'items.sku.product',
             'shippingAddress',
             'fulfillments',
-            'payments'
+            'payments',
+            'deliveryPartner',
+            'shippingMethod',
+            'shippingZone',
         ])->findOrFail($id);
 
         return response()->json($order);
@@ -78,13 +90,21 @@ class OrderController extends Controller
      */
     public function updateStatus(Request $request, $id)
     {
-        $order = Order::findOrFail($id);
+        $order = Order::with('items.sku')->findOrFail($id);
 
         $data = $request->validate([
             'status' => 'required|in:pending,processing,shipped,delivered,cancelled,refunded',
         ]);
 
         $order->update($data);
+
+        if ($data['status'] === 'delivered') {
+            AdjustInventoryJob::dispatch($order->id, 'commit');
+        }
+
+        if ($data['status'] === 'cancelled') {
+            AdjustInventoryJob::dispatch($order->id, 'release');
+        }
 
         // Create fulfillment record if status is shipped or delivered
         if (in_array($data['status'], ['shipped', 'delivered'])) {
@@ -121,6 +141,109 @@ class OrderController extends Controller
         ]);
     }
 
+    public function assignDeliveryPartner(Request $request, int $id)
+    {
+        $order = Order::with(['deliveryPartner', 'shippingMethod', 'shippingZone'])->findOrFail($id);
+
+        $data = $request->validate([
+            'delivery_partner_id' => 'nullable|exists:delivery_partners,id',
+            'delivery_tracking_code' => 'nullable|string|max:120',
+            'dispatch_note' => 'nullable|string|max:1000',
+        ]);
+
+        if (!empty($data['delivery_partner_id'])) {
+            $partner = DeliveryPartner::findOrFail($data['delivery_partner_id']);
+            if ($partner->status !== 'active') {
+                throw ValidationException::withMessages([
+                    'delivery_partner_id' => ['Only active delivery partners can be assigned.'],
+                ]);
+            }
+        }
+
+        $order->update([
+            'delivery_partner_id' => $data['delivery_partner_id'] ?? null,
+            'delivery_tracking_code' => $data['delivery_tracking_code'] ?? $order->delivery_tracking_code,
+            'dispatch_note' => $data['dispatch_note'] ?? $order->dispatch_note,
+            'delivery_status' => !empty($data['delivery_partner_id']) ? 'assigned' : 'pending_assignment',
+            'assigned_at' => !empty($data['delivery_partner_id']) ? now() : null,
+        ]);
+
+        $dispatchResult = null;
+        if ($order->delivery_partner_id) {
+            $dispatchOrder = $order->fresh(['deliveryPartner']);
+            $dispatchProvider = $this->resolveDispatchProvider($dispatchOrder);
+
+            $dispatchResult = $this->logisticsManager->dispatch($dispatchOrder, $dispatchProvider, [
+                'tracking_code' => $order->delivery_tracking_code,
+            ]);
+        }
+
+        return response()->json([
+            'message' => 'Delivery assignment updated successfully',
+            'order' => $order->fresh(['deliveryPartner', 'shippingMethod', 'shippingZone']),
+            'dispatch' => $dispatchResult,
+        ]);
+    }
+
+    protected function resolveDispatchProvider(Order $order): string
+    {
+        $partnerName = strtolower(trim((string) data_get($order, 'deliveryPartner.name', '')));
+        $companyName = strtolower(trim((string) data_get($order, 'deliveryPartner.company_name', '')));
+        $providerLabel = trim($partnerName . ' ' . $companyName);
+
+        $providers = ['dhl', 'gig', 'kwik', 'sendbox'];
+        foreach ($providers as $provider) {
+            if ($providerLabel !== '' && str_contains($providerLabel, $provider)) {
+                return $provider;
+            }
+        }
+
+        if (config('services.dhl.api_key') && config('services.dhl.api_secret')) {
+            return 'dhl';
+        }
+
+        return 'manual_local_partner';
+    }
+
+    public function updateDeliveryStatus(Request $request, int $id)
+    {
+        $order = Order::findOrFail($id);
+
+        $data = $request->validate([
+            'delivery_status' => 'required|string|in:pending_assignment,assigned,packed,shipped,in_transit,delivered,delivery_failed,returned,cancelled',
+            'dispatch_note' => 'nullable|string|max:1000',
+            'delivery_tracking_code' => 'nullable|string|max:120',
+        ]);
+
+        $nextStatus = $data['delivery_status'];
+        if (($order->delivery_status ?? 'pending_assignment') !== $nextStatus && !$order->canTransitionDeliveryStatusTo($nextStatus)) {
+            throw ValidationException::withMessages([
+                'delivery_status' => ['Invalid delivery status transition requested.'],
+            ]);
+        }
+
+        $payload = [
+            'delivery_status' => $nextStatus,
+            'dispatch_note' => $data['dispatch_note'] ?? $order->dispatch_note,
+            'delivery_tracking_code' => $data['delivery_tracking_code'] ?? $order->delivery_tracking_code,
+        ];
+
+        if ($nextStatus === 'shipped' && !$order->shipped_at) {
+            $payload['shipped_at'] = now();
+        }
+
+        if ($nextStatus === 'delivered' && !$order->delivered_at) {
+            $payload['delivered_at'] = now();
+        }
+
+        $order->update($payload);
+
+        return response()->json([
+            'message' => 'Delivery status updated successfully',
+            'order' => $order->fresh(['deliveryPartner', 'shippingMethod', 'shippingZone']),
+        ]);
+    }
+
     /**
      * Get order statistics
      */
@@ -151,25 +274,18 @@ class OrderController extends Controller
      */
     public function export(Request $request)
     {
-        $query = Order::with(['user', 'items.sku.product']);
+        $exportName = 'orders-export-' . now()->format('YmdHis') . '.csv';
 
-        // Apply same filters as index
-        if ($request->filled('status')) {
-            $query->where('status', $request->status);
-        }
-        if ($request->filled('start_date')) {
-            $query->whereDate('created_at', '>=', $request->start_date);
-        }
-        if ($request->filled('end_date')) {
-            $query->whereDate('created_at', '<=', $request->end_date);
-        }
+        ExportOrdersJob::dispatch([
+            'status' => $request->status,
+            'start_date' => $request->start_date,
+            'end_date' => $request->end_date,
+        ], $exportName);
 
-        $orders = $query->get();
-
-        // Return CSV data
         return response()->json([
-            'data' => $orders,
-            'message' => 'Orders exported successfully'
+            'message' => 'Orders export queued successfully',
+            'file' => 'exports/' . $exportName,
+            'download_hint' => 'Retrieve from storage/app/exports/' . $exportName,
         ]);
     }
 }

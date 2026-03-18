@@ -1,5 +1,16 @@
 import { defineStore } from 'pinia';
 import axios from 'axios';
+import { normalizeProductMedia } from '../utils/productMedia';
+
+const normalizeProduct = (product) => {
+  const media = normalizeProductMedia(product);
+  return {
+    ...product,
+    primary_image_url: media.primaryImage,
+    gallery_images: media.gallery,
+    image_placeholder: media.placeholder,
+  };
+};
 
 export const useCatalogStore = defineStore('catalog', {
   state: () => ({
@@ -43,7 +54,7 @@ export const useCatalogStore = defineStore('catalog', {
         this.loading = true;
         const params = { ...this.filters };
         const { data } = await axios.get('/api/products', { params });
-        this.products = data.data || [];
+        this.products = (data.data || []).map(normalizeProduct);
         this.pagination = data.meta || {};
         this.facets = data.facets || {};
       } catch (error) {
@@ -76,7 +87,7 @@ export const useCatalogStore = defineStore('catalog', {
         const { data } = await axios.get('/api/products/search', {
           params: { q: query },
         });
-        return data;
+        return Array.isArray(data) ? data.map(normalizeProduct) : [];
       } catch (error) {
         console.error('Failed to search products:', error);
         return [];

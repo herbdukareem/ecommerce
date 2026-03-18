@@ -96,6 +96,8 @@ class ProductController extends Controller
             ->where('vendor_id', $user->id)
             ->findOrFail($id);
 
+        $this->authorize('view', $product);
+
         return response()->json($product);
     }
 
@@ -107,6 +109,7 @@ class ProductController extends Controller
         $user = $request->user();
         
         $product = Product::where('vendor_id', $user->id)->findOrFail($id);
+        $this->authorize('update', $product);
 
         $data = $request->validate([
             'title' => 'sometimes|string|max:255',
@@ -144,6 +147,7 @@ class ProductController extends Controller
         $user = $request->user();
         
         $product = Product::where('vendor_id', $user->id)->findOrFail($id);
+        $this->authorize('delete', $product);
         $product->delete();
 
         return response()->json([

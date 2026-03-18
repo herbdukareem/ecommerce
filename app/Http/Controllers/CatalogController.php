@@ -20,7 +20,13 @@ class CatalogController extends Controller
     public function index(Request $request)
     {
         $query = Product::query()
-            ->with(['skus.stocks', 'categories'])
+            ->with(['skus.stocks', 'categories', 'images'])
+            ->withCount(['reviews as review_count' => function ($q) {
+                $q->where('is_approved', true);
+            }])
+            ->withAvg(['reviews as average_rating' => function ($q) {
+                $q->where('is_approved', true);
+            }], 'rating')
             ->where('status', 'active');
 
         // Search query
@@ -98,6 +104,9 @@ class CatalogController extends Controller
         // Pagination
         $perPage = min($request->get('per_page', 24), 100);
         $products = $query->paginate($perPage);
+        $products->getCollection()->transform(function ($product) {
+            return $this->attachPurchaseMeta($product);
+        });
 
         // Build facets for filtering UI
         $facets = $this->buildFacets($request);
@@ -144,9 +153,12 @@ class CatalogController extends Controller
                 'skus.attributeValues.attribute',
                 'attributes.values',
                 'categories',
+                'images',
                 'vendor'
             ])
             ->firstOrFail();
+
+        $product = $this->attachPurchaseMeta($product);
 
         // Calculate total available stock
         $product->total_stock = $product->skus->sum(function ($sku) {
@@ -194,15 +206,46 @@ class CatalogController extends Controller
             'q' => 'required|string|min:2',
         ]);
 
-        $results = Product::where('status', 'active')
+        $results = Product::with(['skus.stocks'])
+            ->where('status', 'active')
             ->where(function ($query) use ($request) {
                 $query->where('title', 'like', "%{$request->q}%")
                       ->orWhere('description', 'like', "%{$request->q}%");
             })
-            ->select('id', 'title', 'slug', 'base_price')
             ->limit(10)
-            ->get();
+            ->get()
+            ->map(function ($product) {
+                return $this->attachPurchaseMeta($product);
+            });
 
         return response()->json($results);
+    }
+
+    /**
+     * Attach purchase metadata used by card-level add-to-cart logic.
+     */
+    protected function attachPurchaseMeta(Product $product)
+    {
+        $activeSkus = $product->skus->filter(function ($sku) {
+            return (bool) ($sku->active ?? true);
+        })->values();
+
+        $inStockSkus = $activeSkus->filter(function ($sku) {
+            $stockFromWarehouses = $sku->stocks->sum(function ($stock) {
+                return (int) $stock->on_hand - (int) $stock->reserved;
+            });
+
+            $available = $stockFromWarehouses > 0
+                ? $stockFromWarehouses
+                : (int) ($sku->stock_quantity ?? 0);
+
+            return $available > 0;
+        })->values();
+
+        $product->setAttribute('default_sku_id', optional($inStockSkus->first())->id);
+        $product->setAttribute('has_variants', $activeSkus->count() > 1);
+        $product->setAttribute('is_in_stock', $inStockSkus->isNotEmpty());
+
+        return $product;
     }
 }

@@ -85,7 +85,10 @@
           </Button>
         </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div v-if="loading" class="py-10 text-center text-secondary">Loading featured products...</div>
+        <div v-else-if="loadError" class="py-10 text-center text-danger">{{ loadError }}</div>
+        <div v-else-if="featuredProducts.length === 0" class="py-10 text-center text-secondary">No featured products yet.</div>
+        <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           <Card
             v-for="(product, index) in featuredProducts"
             :key="product.id"
@@ -94,11 +97,17 @@
             clickable
             animation="fade-in-up"
             :class="`stagger-${index + 1}`"
-            @click="$router.push(`/products/${product.id}`)"
+            @click="$router.push(`/products/${product.slug}`)"
           >
             <div class="relative mb-4">
-              <div class="w-full h-48 bg-gradient-to-br from-primary/10 to-primary-dark/10 rounded-lg flex items-center justify-center">
-                <i class="mdi mdi-image text-5xl text-primary/30"></i>
+              <div class="w-full h-48 bg-base rounded-lg overflow-hidden border border-DEFAULT">
+                <img
+                  :src="product.primary_image_url || product.image_placeholder"
+                  :alt="product.title"
+                  class="w-full h-full object-cover"
+                  loading="lazy"
+                  @error="onImageError($event, product.image_placeholder)"
+                />
               </div>
               <Badge
                 v-if="product.discount"
@@ -108,22 +117,29 @@
                 -{{ product.discount }}%
               </Badge>
             </div>
-            <h3 class="font-semibold text-primary mb-2">{{ product.name }}</h3>
+            <h3 class="font-semibold text-primary mb-2">{{ product.title }}</h3>
             <div class="flex items-center gap-2 mb-2">
               <div class="flex items-center gap-1 text-warning">
                 <i class="mdi mdi-star text-sm"></i>
-                <span class="text-sm font-medium">{{ product.rating }}</span>
+                <span class="text-sm font-medium">{{ product.average_rating ?? 'N/A' }}</span>
               </div>
-              <span class="text-xs text-secondary">({{ product.reviews }} reviews)</span>
+              <span class="text-xs text-secondary">({{ product.review_count ?? 0 }} reviews)</span>
             </div>
             <div class="flex items-center justify-between">
               <div>
-                <span class="text-lg font-bold text-primary">${{ product.price }}</span>
+                <span class="text-lg font-bold text-primary">{{ formatCurrency(product.base_price) }}</span>
                 <span v-if="product.originalPrice" class="text-sm text-secondary line-through ml-2">
-                  ${{ product.originalPrice }}
+                  {{ formatCurrency(product.originalPrice) }}
                 </span>
               </div>
-              <Button variant="primary" size="sm" icon="cart-plus" icon-only />
+              <Button
+                variant="primary"
+                size="sm"
+                icon="cart-plus"
+                icon-only
+                :disabled="isProductOutOfStock(product)"
+                @click.stop="addToCart(product)"
+              />
             </div>
           </Card>
         </div>
@@ -138,7 +154,9 @@
           <p class="text-secondary">Explore our wide range of products</p>
         </div>
 
-        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <div v-if="loading" class="py-8 text-center text-secondary">Loading categories...</div>
+        <div v-else-if="categories.length === 0" class="py-8 text-center text-secondary">No categories available.</div>
+        <div v-else class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
           <Card
             v-for="(category, index) in categories"
             :key="category.id"
@@ -147,11 +165,11 @@
             clickable
             animation="fade-in-up"
             :class="`stagger-${index + 1}`"
-            @click="$router.push(`/products?category=${category.slug}`)"
+            @click="$router.push(`/products?category_id=${category.id}`)"
           >
             <div class="text-center">
               <div class="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
-                <i :class="`mdi mdi-${category.icon} text-2xl text-primary`"></i>
+                <i :class="`mdi mdi-${category.icon || 'shape'} text-2xl text-primary`"></i>
               </div>
               <h3 class="text-sm font-semibold text-primary">{{ category.name }}</h3>
             </div>
@@ -163,27 +181,83 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { computed, inject, onMounted, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import axios from 'axios';
 import MainLayout from '../components/layout/MainLayout.vue';
 import Card from '../components/ui/Card.vue';
 import Button from '../components/ui/Button.vue';
 import Badge from '../components/ui/Badge.vue';
 import LaunchingBanner from '../components/ui/LaunchingBanner.vue';
+import { useCartStore } from '../stores/cart';
+import { useSettingsStore } from '../stores/settings';
+import { useAuthStore } from '../stores/auth';
+import { resolveProductPurchase } from '../utils/productPurchase';
 
-// Mock data - replace with actual API calls
-const featuredProducts = ref([
-  { id: 1, name: 'Wireless Headphones', price: 79.99, originalPrice: 99.99, discount: 20, rating: 4.5, reviews: 128 },
-  { id: 2, name: 'Smart Watch', price: 199.99, rating: 4.8, reviews: 256 },
-  { id: 3, name: 'Laptop Stand', price: 49.99, originalPrice: 69.99, discount: 29, rating: 4.3, reviews: 89 },
-  { id: 4, name: 'USB-C Hub', price: 39.99, rating: 4.6, reviews: 145 },
-]);
+const cartStore = useCartStore();
+const settingsStore = useSettingsStore();
+const authStore = useAuthStore();
+const router = useRouter();
+const route = useRoute();
+const toast = inject('toast');
+const featuredProducts = ref([]);
+const categories = ref([]);
+const loading = ref(false);
+const loadError = ref('');
 
-const categories = ref([
-  { id: 1, name: 'Electronics', slug: 'electronics', icon: 'laptop' },
-  { id: 2, name: 'Fashion', slug: 'fashion', icon: 'hanger' },
-  { id: 3, name: 'Home', slug: 'home', icon: 'home' },
-  { id: 4, name: 'Sports', slug: 'sports', icon: 'basketball' },
-  { id: 5, name: 'Books', slug: 'books', icon: 'book-open-variant' },
-  { id: 6, name: 'Toys', slug: 'toys', icon: 'toy-brick' },
-]);
+const formatCurrency = settingsStore.formatCurrency;
+const isAuthenticated = computed(() => authStore.isAuthenticated);
+const isProductOutOfStock = (product) => resolveProductPurchase(product).outOfStock;
+
+const loadHomeData = async () => {
+  loading.value = true;
+  loadError.value = '';
+  try {
+    const [productsRes, categoriesRes] = await Promise.all([
+      axios.get('/api/products', { params: { per_page: 4, sort: 'newest' } }),
+      axios.get('/api/categories'),
+    ]);
+    featuredProducts.value = productsRes.data?.data || [];
+    categories.value = categoriesRes.data || [];
+  } catch (error) {
+    loadError.value = error.response?.data?.message || 'Failed to load homepage data.';
+  } finally {
+    loading.value = false;
+  }
+};
+
+const addToCart = async (product) => {
+  if (!isAuthenticated.value) {
+    toast?.warning('Please login to add items to your cart.');
+    router.push({ name: 'Login', query: { redirect: route.fullPath } });
+    return;
+  }
+
+  const purchase = resolveProductPurchase(product);
+
+  if (purchase.requiresSelection) {
+    toast?.info('Select a variant on the product details page.');
+    router.push(`/products/${product.slug}`);
+    return;
+  }
+
+  if (purchase.outOfStock || !purchase.selectedSkuId) {
+    toast?.warning('This product is currently out of stock.');
+    return;
+  }
+
+  const result = await cartStore.addItem(purchase.selectedSkuId, 1);
+  if (result.success) {
+    toast?.success('Added to cart');
+  } else {
+    toast?.error(result.error || 'Failed to add item to cart');
+  }
+};
+
+const onImageError = (event, fallback) => {
+  if (!event?.target) return;
+  event.target.src = fallback;
+};
+
+onMounted(loadHomeData);
 </script>

@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Password;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Validation\Rules\Password as PasswordRule;
+use Spatie\Permission\Models\Role;
 
 class AuthController extends Controller
 {
@@ -33,7 +34,7 @@ class AuthController extends Controller
 
         // Assign default role (Customer)
         if (method_exists($user, 'assignRole')) {
-            $user->assignRole('Customer');
+            $user->assignRole(Role::findOrCreate('Customer', 'sanctum'));
         }
 
         // Create token

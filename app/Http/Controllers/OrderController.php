@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Order;
 use App\Models\OrderFulfillment;
 use App\Mail\ShippingUpdate;
+use App\Jobs\AdjustInventoryJob;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
@@ -21,7 +22,7 @@ class OrderController extends Controller
     {
         $user = $request->user();
 
-        $query = Order::with(['items.sku.product', 'shippingAddress', 'payments'])
+        $query = Order::with(['items.sku.product', 'shippingAddress', 'payments', 'deliveryPartner', 'shippingMethod', 'shippingZone'])
             ->where('user_id', $user->id);
 
         if ($request->filled('status')) {
@@ -48,10 +49,15 @@ class OrderController extends Controller
             'items.sku.product',
             'shippingAddress',
             'payments',
-            'fulfillments.warehouse'
+            'fulfillments.warehouse',
+            'deliveryPartner',
+            'shippingMethod',
+            'shippingZone',
         ])
         ->where('user_id', $user->id)
         ->findOrFail($id);
+
+        $this->authorize('view', $order);
 
         return response()->json($order);
     }
@@ -64,6 +70,7 @@ class OrderController extends Controller
         $user = $request->user();
 
         $order = Order::where('user_id', $user->id)->findOrFail($id);
+        $this->authorize('cancel', $order);
 
         if (!in_array($order->status, ['pending', 'processing'])) {
             return response()->json([
@@ -72,14 +79,7 @@ class OrderController extends Controller
         }
 
         DB::transaction(function () use ($order) {
-            // Release reserved inventory
-            foreach ($order->items as $item) {
-                $stock = $item->sku->stocks()->lockForUpdate()->first();
-                if ($stock && $stock->reserved >= $item->quantity) {
-                    $stock->reserved -= $item->quantity;
-                    $stock->save();
-                }
-            }
+            AdjustInventoryJob::dispatch($order->id, 'release');
 
             $order->update([
                 'status' => 'cancelled',
@@ -101,7 +101,7 @@ class OrderController extends Controller
         $user = $request->user();
 
         // Get orders that contain items from this vendor's products
-        $query = Order::with(['items.sku.product', 'shippingAddress', 'user'])
+        $query = Order::with(['items.sku.product', 'shippingAddress', 'user', 'deliveryPartner', 'shippingMethod', 'shippingZone'])
             ->whereHas('items.sku.product', function ($q) use ($user) {
                 $q->where('vendor_id', $user->id);
             });
@@ -131,7 +131,17 @@ class OrderController extends Controller
             $q->where('vendor_id', $user->id);
         })->findOrFail($id);
 
+        $this->authorize('updateStatus', $order);
+
         $order->update(['status' => $request->status]);
+
+        if ($request->status === 'delivered') {
+            AdjustInventoryJob::dispatch($order->id, 'commit');
+        }
+
+        if ($request->status === 'cancelled') {
+            AdjustInventoryJob::dispatch($order->id, 'release');
+        }
 
         return response()->json([
             'message' => 'Order status updated successfully',
@@ -169,7 +179,7 @@ class OrderController extends Controller
 
         // Send shipping update email
         $order->load(['user', 'shippingAddress']);
-        Mail::to($order->user->email)->send(new ShippingUpdate($order, $fulfillment));
+        Mail::to($order->user->email)->queue(new ShippingUpdate($order, $fulfillment));
 
         return response()->json([
             'message' => 'Order fulfilled successfully',

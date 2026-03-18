@@ -81,12 +81,12 @@ See `routes/api.php` for the complete list.
 
 ## 📧 Email Testing
 
-Your Mailtrap credentials are configured in `.env`:
+Mail credentials must be configured in `.env` and must never be committed in documentation.
 
-- **Host**: sandbox.smtp.mailtrap.io
-- **Port**: 2525
-- **Username**: 1151fe9f6cd70e
-- **Password**: 2dd53dccdcc192
+- **Host**: `MAIL_HOST`
+- **Port**: `MAIL_PORT`
+- **Username**: `MAIL_USERNAME`
+- **Password**: `MAIL_PASSWORD`
 
 To test emails:
 1. Place an order through the checkout

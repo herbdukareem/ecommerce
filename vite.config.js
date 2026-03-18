@@ -44,4 +44,16 @@ export default defineConfig({
       '@': '/resources/js',
     },
   },
+  build: {
+    sourcemap: false,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['vue', 'vue-router', 'pinia'],
+          charts: ['chart.js'],
+          ui: ['@headlessui/vue', '@heroicons/vue'],
+        },
+      },
+    },
+  },
 });

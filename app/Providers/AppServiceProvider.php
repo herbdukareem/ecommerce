@@ -4,26 +4,16 @@ namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\Gate;
-use App\Models\User;
-use App\Models\Branch;
-use App\Models\Store;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use App\Models\Product;
-use App\Models\Sale;
-use App\Models\Customer;
-use App\Models\Supplier;
-use App\Models\PurchaseOrder;
-use App\Models\WalletTransaction;
-use App\Models\StockTransfer;
-use App\Policies\UserPolicy;
-use App\Policies\BranchPolicy;
-use App\Policies\StorePolicy;
+use App\Models\Order;
+use App\Models\Address;
+use App\Models\Review;
 use App\Policies\ProductPolicy;
-use App\Policies\SalePolicy;
-use App\Policies\CustomerPolicy;
-use App\Policies\SupplierPolicy;
-use App\Policies\PurchaseOrderPolicy;
-use App\Policies\WalletTransactionPolicy;
-use App\Policies\StockTransferPolicy;
+use App\Policies\OrderPolicy;
+use App\Policies\AddressPolicy;
+use App\Policies\ReviewPolicy;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -33,16 +23,10 @@ class AppServiceProvider extends ServiceProvider
      * @var array<class-string, class-string>
      */
     protected $policies = [
-        User::class => UserPolicy::class,
-        Branch::class => BranchPolicy::class,
-        Store::class => StorePolicy::class,
         Product::class => ProductPolicy::class,
-        Sale::class => SalePolicy::class,
-        Customer::class => CustomerPolicy::class,
-        Supplier::class => SupplierPolicy::class,
-        PurchaseOrder::class => PurchaseOrderPolicy::class,
-        WalletTransaction::class => WalletTransactionPolicy::class,
-        StockTransfer::class => StockTransferPolicy::class,
+        Order::class => OrderPolicy::class,
+        Address::class => AddressPolicy::class,
+        Review::class => ReviewPolicy::class,
     ];
 
     /**
@@ -62,5 +46,14 @@ class AppServiceProvider extends ServiceProvider
         foreach ($this->policies as $model => $policy) {
             Gate::policy($model, $policy);
         }
+
+        DB::whenQueryingForLongerThan(500, function ($connection, $event) {
+            Log::warning('slow_query_detected', [
+                'sql' => $event->sql,
+                'bindings' => $event->bindings,
+                'time_ms' => $event->time,
+                'connection' => $connection->getName(),
+            ]);
+        });
     }
 }

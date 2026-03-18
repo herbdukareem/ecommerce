@@ -23,15 +23,94 @@ class InventoryService
             foreach ($items as $item) {
                 $sku = $item['sku'];
                 $qty = $item['qty'];
-                /** @var Stock|null $stock */
-                $stock = $sku->stocks()->lockForUpdate()->first();
-                if (!$stock || $stock->on_hand - $stock->reserved < $qty) {
+
+                $stocks = $sku->stocks()->lockForUpdate()->orderByDesc('on_hand')->get();
+                $available = $stocks->sum(fn (Stock $stock) => max(0, $stock->on_hand - $stock->reserved));
+
+                if ($available < $qty) {
                     return false; // insufficient stock
                 }
-                $stock->reserved += $qty;
-                $stock->save();
-                // TODO: log inventory movement (reserve)
+
+                $remaining = $qty;
+                foreach ($stocks as $stock) {
+                    $canReserve = max(0, $stock->on_hand - $stock->reserved);
+                    if ($canReserve <= 0) {
+                        continue;
+                    }
+
+                    $toReserve = min($remaining, $canReserve);
+                    $stock->reserved += $toReserve;
+                    $stock->save();
+
+                    $remaining -= $toReserve;
+                    if ($remaining <= 0) {
+                        break;
+                    }
+                }
             }
+            return true;
+        }, 3);
+    }
+
+    public function release(array $items): void
+    {
+        DB::transaction(function () use ($items) {
+            foreach ($items as $item) {
+                $sku = $item['sku'];
+                $qty = $item['qty'];
+
+                $stocks = $sku->stocks()->lockForUpdate()->orderByDesc('reserved')->get();
+                $remaining = $qty;
+
+                foreach ($stocks as $stock) {
+                    if ($stock->reserved <= 0) {
+                        continue;
+                    }
+
+                    $toRelease = min($remaining, $stock->reserved);
+                    $stock->reserved -= $toRelease;
+                    $stock->save();
+
+                    $remaining -= $toRelease;
+                    if ($remaining <= 0) {
+                        break;
+                    }
+                }
+            }
+        }, 3);
+    }
+
+    public function commit(array $items): bool
+    {
+        return DB::transaction(function () use ($items) {
+            foreach ($items as $item) {
+                $sku = $item['sku'];
+                $qty = $item['qty'];
+
+                $stocks = $sku->stocks()->lockForUpdate()->orderByDesc('reserved')->get();
+                $reserved = $stocks->sum('reserved');
+                if ($reserved < $qty) {
+                    return false;
+                }
+
+                $remaining = $qty;
+                foreach ($stocks as $stock) {
+                    if ($stock->reserved <= 0) {
+                        continue;
+                    }
+
+                    $toCommit = min($remaining, $stock->reserved);
+                    $stock->reserved -= $toCommit;
+                    $stock->on_hand = max(0, $stock->on_hand - $toCommit);
+                    $stock->save();
+
+                    $remaining -= $toCommit;
+                    if ($remaining <= 0) {
+                        break;
+                    }
+                }
+            }
+
             return true;
         }, 3);
     }

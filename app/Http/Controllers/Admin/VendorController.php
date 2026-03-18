@@ -73,7 +73,8 @@ class VendorController extends Controller
             'email_verified_at' => ($data['is_verified'] ?? false) ? now() : null,
         ]);
 
-        $vendor->assignRole('Vendor');
+        $vendorRole = Role::firstOrCreate(['name' => 'Vendor', 'guard_name' => 'sanctum']);
+        $vendor->assignRole($vendorRole);
 
         return response()->json([
             'message' => 'Vendor created successfully',

@@ -1,204 +1,107 @@
 <template>
   <MainLayout>
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <!-- Header -->
       <div class="mb-8 animate-fade-in-down">
         <h1 class="text-4xl font-bold text-primary mb-2">Products</h1>
-        <p class="text-secondary">Discover our amazing collection</p>
+        <p class="text-secondary">Discover our latest catalog</p>
       </div>
 
       <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
-        <!-- Filters Sidebar -->
         <aside class="lg:col-span-1">
           <Card :elevation="2" title="Filters" icon="filter-variant" class="sticky top-20">
-            <!-- Search -->
             <div class="mb-6">
-              <Input
-                v-model="filters.search"
-                placeholder="Search products..."
-                icon="magnify"
-                clearable
+              <Input v-model="localFilters.q" placeholder="Search products..." icon="magnify" />
+            </div>
+
+            <div class="mb-6">
+              <h3 class="text-sm font-semibold text-primary mb-3 uppercase tracking-wider">Category</h3>
+              <Select
+                v-model="localFilters.category_id"
+                :options="categoryOptions"
+                placeholder="All categories"
               />
             </div>
 
-            <!-- Categories -->
-            <div class="mb-6">
-              <h3 class="text-sm font-semibold text-primary mb-3 uppercase tracking-wider">Categories</h3>
-              <div class="space-y-2">
-                <label
-                  v-for="category in categories"
-                  :key="category.id"
-                  class="flex items-center gap-2 cursor-pointer group"
-                >
-                  <input
-                    type="checkbox"
-                    :value="category.id"
-                    v-model="filters.categories"
-                    class="w-4 h-4 rounded border-DEFAULT text-primary focus:ring-2 focus:ring-primary/50"
-                  />
-                  <span class="text-sm text-secondary group-hover:text-primary transition-colors">
-                    {{ category.name }}
-                  </span>
-                </label>
-              </div>
-            </div>
-
-            <!-- Price Range -->
             <div class="mb-6">
               <h3 class="text-sm font-semibold text-primary mb-3 uppercase tracking-wider">Price Range</h3>
-              <div class="space-y-3">
-                <Input
-                  v-model="filters.minPrice"
-                  type="number"
-                  placeholder="Min"
-                  icon="currency-usd"
-                  size="sm"
-                />
-                <Input
-                  v-model="filters.maxPrice"
-                  type="number"
-                  placeholder="Max"
-                  icon="currency-usd"
-                  size="sm"
-                />
-              </div>
-            </div>
-
-            <!-- Rating -->
-            <div class="mb-6">
-              <h3 class="text-sm font-semibold text-primary mb-3 uppercase tracking-wider">Rating</h3>
               <div class="space-y-2">
-                <label
-                  v-for="rating in [5, 4, 3, 2, 1]"
-                  :key="rating"
-                  class="flex items-center gap-2 cursor-pointer group"
-                >
-                  <input
-                    type="radio"
-                    :value="rating"
-                    v-model="filters.rating"
-                    class="w-4 h-4 border-DEFAULT text-primary focus:ring-2 focus:ring-primary/50"
-                  />
-                  <div class="flex items-center gap-1">
-                    <i
-                      v-for="i in 5"
-                      :key="i"
-                      :class="i <= rating ? 'mdi mdi-star text-warning' : 'mdi mdi-star-outline text-secondary'"
-                      class="text-sm"
-                    ></i>
-                    <span class="text-sm text-secondary ml-1">& up</span>
-                  </div>
-                </label>
+                <Input v-model="localFilters.price_min" type="number" placeholder="Min" />
+                <Input v-model="localFilters.price_max" type="number" placeholder="Max" />
               </div>
             </div>
 
-            <!-- Clear Filters -->
-            <Button variant="outline" class="w-full" icon="filter-remove" @click="clearFilters">
-              Clear Filters
-            </Button>
+            <div class="mb-6">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input v-model="localFilters.in_stock" type="checkbox" />
+                <span class="text-sm text-secondary">In stock only</span>
+              </label>
+            </div>
+
+            <div class="flex gap-2">
+              <Button variant="primary" class="w-full" @click="applyFilters">Apply</Button>
+              <Button variant="outline" class="w-full" @click="clearFilters">Reset</Button>
+            </div>
           </Card>
         </aside>
 
-        <!-- Products Grid -->
         <div class="lg:col-span-3">
-          <!-- Toolbar -->
           <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
             <p class="text-sm text-secondary">
-              Showing <span class="font-medium text-primary">{{ products.length }}</span> products
+              Showing <span class="font-medium text-primary">{{ products.length }}</span>
+              of <span class="font-medium text-primary">{{ pagination.total || 0 }}</span>
             </p>
 
-            <div class="flex items-center gap-3">
-              <!-- View Toggle -->
-              <div class="flex items-center gap-1 bg-surface rounded-lg p-1 border border-DEFAULT">
-                <button
-                  @click="viewMode = 'grid'"
-                  :class="viewMode === 'grid' ? 'bg-primary text-white' : 'text-secondary hover:text-primary'"
-                  class="p-2 rounded transition-all"
-                >
-                  <i class="mdi mdi-view-grid"></i>
-                </button>
-                <button
-                  @click="viewMode = 'list'"
-                  :class="viewMode === 'list' ? 'bg-primary text-white' : 'text-secondary hover:text-primary'"
-                  class="p-2 rounded transition-all"
-                >
-                  <i class="mdi mdi-view-list"></i>
-                </button>
-              </div>
-
-              <!-- Sort -->
-              <Select
-                v-model="sortBy"
-                :options="sortOptions"
-                icon="sort"
-                class="w-48"
-              />
-            </div>
+            <Select v-model="localFilters.sort" :options="sortOptions" class="w-56" @update:model-value="applyFilters" />
           </div>
 
-          <!-- Products -->
-          <div
-            :class="viewMode === 'grid' ? 'grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6' : 'space-y-4'"
-          >
+          <div v-if="loading" class="py-10 text-center text-secondary">Loading products...</div>
+          <div v-else-if="errorMessage" class="py-10 text-center text-danger">{{ errorMessage }}</div>
+          <div v-else-if="products.length === 0" class="py-10 text-center text-secondary">No products found for the selected filters.</div>
+
+          <div v-else class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
             <Card
-              v-for="(product, index) in products"
+              v-for="product in products"
               :key="product.id"
               :elevation="2"
               hoverable
               clickable
-              animation="fade-in-up"
-              :class="`stagger-${(index % 6) + 1}`"
-              @click="$router.push(`/products/${product.id}`)"
+              @click="$router.push(`/products/${product.slug}`)"
             >
-              <div :class="viewMode === 'list' ? 'flex gap-4' : ''">
-                <div :class="viewMode === 'list' ? 'w-32 flex-shrink-0' : 'relative mb-4'">
-                  <div :class="viewMode === 'list' ? 'h-32' : 'h-48'" class="w-full bg-gradient-to-br from-primary/10 to-primary-dark/10 rounded-lg flex items-center justify-center">
-                    <i class="mdi mdi-image text-5xl text-primary/30"></i>
-                  </div>
-                  <Badge
-                    v-if="product.discount"
-                    variant="danger"
-                    class="absolute top-2 right-2"
-                  >
-                    -{{ product.discount }}%
-                  </Badge>
-                </div>
-                <div class="flex-1">
-                  <h3 class="font-semibold text-primary mb-2">{{ product.name }}</h3>
-                  <p v-if="viewMode === 'list'" class="text-sm text-secondary mb-3 line-clamp-2">
-                    {{ product.description }}
-                  </p>
-                  <div class="flex items-center gap-2 mb-2">
-                    <div class="flex items-center gap-1 text-warning">
-                      <i class="mdi mdi-star text-sm"></i>
-                      <span class="text-sm font-medium">{{ product.rating }}</span>
-                    </div>
-                    <span class="text-xs text-secondary">({{ product.reviews }} reviews)</span>
-                  </div>
-                  <div class="flex items-center justify-between">
-                    <div>
-                      <span class="text-lg font-bold text-primary">${{ product.price }}</span>
-                      <span v-if="product.originalPrice" class="text-sm text-secondary line-through ml-2">
-                        ${{ product.originalPrice }}
-                      </span>
-                    </div>
-                    <Button variant="primary" size="sm" icon="cart-plus" :icon-only="viewMode === 'grid'" @click.stop="addToCart(product)">
-                      <span v-if="viewMode === 'list'">Add to Cart</span>
-                    </Button>
-                  </div>
-                </div>
+              <div class="h-44 rounded-lg bg-gradient-to-br from-primary/10 to-primary-dark/10 flex items-center justify-center mb-4">
+                <img
+                  :src="product.primary_image_url || product.image_placeholder"
+                  :alt="product.title"
+                  class="w-full h-full object-cover rounded-lg"
+                  loading="lazy"
+                  @error="onImageError($event, product.image_placeholder)"
+                />
+              </div>
+
+              <h3 class="font-semibold text-primary mb-2 line-clamp-2">{{ product.title }}</h3>
+              <p class="text-sm text-secondary mb-4 line-clamp-2">{{ product.description || 'No description available.' }}</p>
+
+              <div class="flex items-center justify-between gap-3">
+                <span class="text-lg font-bold text-primary">{{ formatCurrency(product.base_price) }}</span>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  icon="cart-plus"
+                  :disabled="isProductOutOfStock(product)"
+                  @click.stop="addToCart(product)"
+                >
+                  {{ cartButtonLabel(product) }}
+                </Button>
               </div>
             </Card>
           </div>
 
-          <!-- Pagination -->
           <div class="mt-8">
             <Pagination
-              :current-page="currentPage"
-              :total-pages="totalPages"
-              :total="totalProducts"
-              :per-page="perPage"
-              @page-change="handlePageChange"
+              :current-page="pagination.current_page || 1"
+              :total-pages="pagination.last_page || 1"
+              :total="pagination.total || 0"
+              :per-page="pagination.per_page || 24"
+              @page-change="changePage"
             />
           </div>
         </div>
@@ -208,79 +111,146 @@
 </template>
 
 <script setup>
-import { ref, inject } from 'vue';
+import { computed, inject, onMounted, reactive, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import MainLayout from '../components/layout/MainLayout.vue';
 import Card from '../components/ui/Card.vue';
 import Button from '../components/ui/Button.vue';
 import Input from '../components/ui/Input.vue';
 import Select from '../components/ui/Select.vue';
-import Badge from '../components/ui/Badge.vue';
 import Pagination from '../components/ui/Pagination.vue';
+import { useCatalogStore } from '../stores/catalog';
+import { useCartStore } from '../stores/cart';
+import { useSettingsStore } from '../stores/settings';
+import { useAuthStore } from '../stores/auth';
+import { resolveProductPurchase } from '../utils/productPurchase';
 
+const route = useRoute();
+const router = useRouter();
+const catalogStore = useCatalogStore();
+const cartStore = useCartStore();
+const settingsStore = useSettingsStore();
+const authStore = useAuthStore();
 const toast = inject('toast');
 
-// Filters
-const filters = ref({
-  search: '',
-  categories: [],
-  minPrice: '',
-  maxPrice: '',
-  rating: null,
+const loading = computed(() => catalogStore.loading);
+const products = computed(() => catalogStore.products);
+const pagination = computed(() => catalogStore.pagination);
+const categories = computed(() => catalogStore.categories || []);
+const errorMessage = ref('');
+
+const localFilters = reactive({
+  q: '',
+  category_id: null,
+  price_min: '',
+  price_max: '',
+  sort: 'newest',
+  in_stock: false,
 });
 
-// View and Sort
-const viewMode = ref('grid');
-const sortBy = ref('featured');
-
 const sortOptions = [
-  { value: 'featured', label: 'Featured' },
-  { value: 'price-asc', label: 'Price: Low to High' },
-  { value: 'price-desc', label: 'Price: High to Low' },
-  { value: 'rating', label: 'Highest Rated' },
   { value: 'newest', label: 'Newest' },
+  { value: 'oldest', label: 'Oldest' },
+  { value: 'price_asc', label: 'Price: Low to High' },
+  { value: 'price_desc', label: 'Price: High to Low' },
+  { value: 'name_asc', label: 'Name: A-Z' },
+  { value: 'name_desc', label: 'Name: Z-A' },
 ];
 
-// Categories
-const categories = ref([
-  { id: 1, name: 'Electronics' },
-  { id: 2, name: 'Fashion' },
-  { id: 3, name: 'Home & Garden' },
-  { id: 4, name: 'Sports' },
-  { id: 5, name: 'Books' },
-]);
+const categoryOptions = computed(() => {
+  const options = [{ value: null, label: 'All categories' }];
+  for (const category of categories.value) {
+    options.push({ value: category.id, label: category.name });
+  }
+  return options;
+});
 
-// Mock Products Data
-const products = ref([
-  { id: 1, name: 'Wireless Headphones', price: 79.99, originalPrice: 99.99, discount: 20, rating: 4.5, reviews: 128, description: 'High-quality wireless headphones with noise cancellation' },
-  { id: 2, name: 'Smart Watch', price: 199.99, rating: 4.8, reviews: 256, description: 'Feature-rich smartwatch with health tracking' },
-  { id: 3, name: 'Laptop Stand', price: 49.99, originalPrice: 69.99, discount: 29, rating: 4.3, reviews: 89, description: 'Ergonomic laptop stand for better posture' },
-  { id: 4, name: 'USB-C Hub', price: 39.99, rating: 4.6, reviews: 145, description: 'Multi-port USB-C hub with fast data transfer' },
-  { id: 5, name: 'Mechanical Keyboard', price: 129.99, rating: 4.7, reviews: 203, description: 'RGB mechanical keyboard with custom switches' },
-  { id: 6, name: 'Wireless Mouse', price: 59.99, originalPrice: 79.99, discount: 25, rating: 4.4, reviews: 167, description: 'Ergonomic wireless mouse with precision tracking' },
-]);
+const formatCurrency = settingsStore.formatCurrency;
 
-// Pagination
-const currentPage = ref(1);
-const perPage = ref(12);
-const totalProducts = ref(48);
-const totalPages = ref(Math.ceil(totalProducts.value / perPage.value));
+const isProductOutOfStock = (product) => resolveProductPurchase(product).outOfStock;
 
-const clearFilters = () => {
-  filters.value = {
-    search: '',
-    categories: [],
-    minPrice: '',
-    maxPrice: '',
-    rating: null,
-  };
+const cartButtonLabel = (product) => {
+  const purchase = resolveProductPurchase(product);
+  if (purchase.outOfStock) return 'Out of stock';
+  if (purchase.requiresSelection) return 'Select options';
+  return 'Add';
 };
 
-const handlePageChange = (page) => {
-  currentPage.value = page;
-  // Fetch products for the new page
+const syncFiltersToStore = () => {
+  catalogStore.filters.q = localFilters.q || '';
+  catalogStore.filters.category_id = localFilters.category_id || null;
+  catalogStore.filters.price_min = localFilters.price_min || null;
+  catalogStore.filters.price_max = localFilters.price_max || null;
+  catalogStore.filters.sort = localFilters.sort || 'newest';
+  catalogStore.filters.in_stock = !!localFilters.in_stock;
 };
 
-const addToCart = (product) => {
-  toast?.success(`${product.name} added to cart!`);
+const applyFilters = async () => {
+  errorMessage.value = '';
+  catalogStore.filters.page = 1;
+  syncFiltersToStore();
+
+  try {
+    await catalogStore.fetchProducts();
+  } catch (error) {
+    errorMessage.value = error.response?.data?.message || 'Failed to fetch products.';
+  }
 };
+
+const clearFilters = async () => {
+  localFilters.q = '';
+  localFilters.category_id = null;
+  localFilters.price_min = '';
+  localFilters.price_max = '';
+  localFilters.sort = 'newest';
+  localFilters.in_stock = false;
+  await applyFilters();
+};
+
+const changePage = async (page) => {
+  catalogStore.filters.page = page;
+  syncFiltersToStore();
+  await catalogStore.fetchProducts();
+};
+
+const addToCart = async (product) => {
+  if (!authStore.isAuthenticated) {
+    toast?.warning('Please login to add items to your cart.');
+    router.push({ name: 'Login', query: { redirect: route.fullPath } });
+    return;
+  }
+
+  const purchase = resolveProductPurchase(product);
+
+  if (purchase.requiresSelection) {
+    toast?.info('Select a variant on the product details page.');
+    router.push(`/products/${product.slug}`);
+    return;
+  }
+
+  if (purchase.outOfStock || !purchase.selectedSkuId) {
+    toast?.warning('This product is currently out of stock.');
+    return;
+  }
+
+  const result = await cartStore.addItem(purchase.selectedSkuId, 1);
+  if (result.success) {
+    toast?.success('Added to cart');
+  } else {
+    toast?.error(result.error || 'Failed to add item to cart');
+  }
+};
+
+const onImageError = (event, fallback) => {
+  if (!event?.target) return;
+  event.target.src = fallback;
+};
+
+onMounted(async () => {
+  if (route.query.category_id) {
+    localFilters.category_id = Number(route.query.category_id) || null;
+  }
+  await Promise.all([catalogStore.fetchCategories(), catalogStore.fetchAttributes()]);
+  await applyFilters();
+});
 </script>

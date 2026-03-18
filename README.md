@@ -69,6 +69,12 @@ ecommerce-platform/
 - **Reach Filter**: the frontend includes a reusable sidebar component that binds to the API filters.  
   On the backend the `CatalogController` delegates filtering to a `ReachFilterQueryBuilder` which uses indexed columns and caches facet counts in Redis.
 
+## Delivery Guide
+
+For the full hybrid delivery system architecture (structured addresses, zone pricing, local partner assignment, delivery lifecycle, and provider extension strategy), see:
+
+- `DELIVERY_ARCHITECTURE.md`
+
 ## License
 
 This project is provided as open source under the MIT license. Feel free to adapt it to your needs.

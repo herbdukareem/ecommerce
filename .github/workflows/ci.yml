@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "develop"]
+  pull_request:
+    branches: ["main", "develop"]
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: ecommerce_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=3
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, bcmath, pdo_mysql, intl
+          coverage: pcov
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Install Node dependencies
+        run: npm install
+
+      - name: Prepare env
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+
+      - name: Run migrations (testing)
+        env:
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: ecommerce_test
+          DB_USERNAME: root
+          DB_PASSWORD: root
+        run: php artisan migrate --force --env=testing
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Lint frontend
+        run: npm run lint
+
+      - name: Run test suite
+        env:
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: ecommerce_test
+          DB_USERNAME: root
+          DB_PASSWORD: root
+        run: php artisan test --coverage-clover=storage/logs/clover.xml --coverage-text
+
+      - name: Enforce coverage threshold
+        run: |
+          php -r "$file='storage/logs/clover.xml'; if (!file_exists($file)) { fwrite(STDERR, 'Missing coverage report.' . PHP_EOL); exit(1);} $xml=simplexml_load_file($file); $m=$xml->project->metrics; $covered=(int)$m['coveredstatements']; $total=(int)$m['statements']; $pct=$total>0?($covered/$total*100):0; printf('Coverage: %.2f%% (%d/%d)'.PHP_EOL, $pct, $covered, $total); if ($pct < 60) { fwrite(STDERR, 'Coverage below required threshold (60%).'.PHP_EOL); exit(1);}"
+
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: |
+            storage/logs/clover.xml
+            storage/logs/cobertura.xml

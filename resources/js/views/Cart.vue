@@ -40,7 +40,7 @@
 
               <!-- Product Info -->
               <div class="flex-1 min-w-0">
-                <h3 class="font-semibold text-primary mb-1 truncate">{{ item.product_name }}</h3>
+                <h3 class="font-semibold text-primary mb-1 truncate">{{ item.product_title }}</h3>
                 <p class="text-sm text-secondary mb-2">SKU: {{ item.sku_code }}</p>
 
                 <!-- Attributes -->
@@ -139,13 +139,8 @@
                 <div class="flex justify-between text-sm">
                   <span class="text-secondary">Shipping</span>
                   <span class="font-medium text-primary">
-                    {{ shipping === 0 ? 'Free' : formatCurrency(shipping) }}
+                    Included at checkout
                   </span>
-                </div>
-
-                <div class="flex justify-between text-sm">
-                  <span class="text-secondary">Tax</span>
-                  <span class="font-medium text-primary">{{ formatCurrency(tax) }}</span>
                 </div>
 
                 <div class="border-t border-DEFAULT pt-3 flex justify-between">
@@ -183,7 +178,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, inject } from 'vue';
+import { ref, onMounted, inject } from 'vue';
 import { useRouter } from 'vue-router';
 import axios from 'axios';
 import MainLayout from '../components/layout/MainLayout.vue';
@@ -205,29 +200,9 @@ const couponError = ref('');
 const couponSuccess = ref('');
 const applyingCoupon = ref(false);
 const appliedCoupon = ref(null);
-
-// Computed values
-const subtotal = computed(() => {
-  return cartItems.value.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-});
-
-const discount = computed(() => {
-  if (!appliedCoupon.value) return 0;
-  // Calculate discount based on coupon type
-  return 0; // Implement discount logic
-});
-
-const shipping = computed(() => {
-  return subtotal.value > 50 ? 0 : 10; // Free shipping over 50
-});
-
-const tax = computed(() => {
-  return (subtotal.value - discount.value) * 0.075; // 7.5% VAT
-});
-
-const total = computed(() => {
-  return subtotal.value - discount.value + shipping.value + tax.value;
-});
+const subtotal = ref(0);
+const discount = ref(0);
+const total = ref(0);
 
 // Methods
 const fetchCart = async () => {
@@ -235,6 +210,10 @@ const fetchCart = async () => {
     loading.value = true;
     const response = await axios.get('/api/cart');
     cartItems.value = response.data.items || [];
+    subtotal.value = Number(response.data.subtotal || 0);
+    discount.value = Number(response.data.discount || 0);
+    total.value = Number(response.data.total || 0);
+    appliedCoupon.value = response.data.coupon || null;
   } catch (error) {
     console.error('Error fetching cart:', error);
     toast?.error('Failed to load cart');
@@ -247,11 +226,8 @@ const updateQuantity = async (itemId, newQuantity) => {
   if (newQuantity < 1) return;
 
   try {
-    await axios.put(`/api/cart/${itemId}`, { quantity: newQuantity });
-    const item = cartItems.value.find(i => i.id === itemId);
-    if (item) {
-      item.quantity = newQuantity;
-    }
+    await axios.put(`/api/cart/items/${itemId}`, { quantity: newQuantity });
+    await fetchCart();
     toast?.success('Cart updated');
   } catch (error) {
     console.error('Error updating quantity:', error);
@@ -261,8 +237,8 @@ const updateQuantity = async (itemId, newQuantity) => {
 
 const removeItem = async (itemId) => {
   try {
-    await axios.delete(`/api/cart/${itemId}`);
-    cartItems.value = cartItems.value.filter(i => i.id !== itemId);
+    await axios.delete(`/api/cart/items/${itemId}`);
+    await fetchCart();
     toast?.success('Item removed from cart');
   } catch (error) {
     console.error('Error removing item:', error);
@@ -283,6 +259,7 @@ const applyCoupon = async () => {
     });
 
     appliedCoupon.value = response.data.coupon;
+    await fetchCart();
     couponSuccess.value = 'Coupon applied successfully!';
     toast?.success('Coupon applied!');
   } catch (error) {
@@ -293,6 +270,10 @@ const applyCoupon = async () => {
 };
 
 const proceedToCheckout = () => {
+  if (cartItems.value.length === 0) {
+    toast?.error('Your cart is empty');
+    return;
+  }
   router.push('/checkout');
 };
 

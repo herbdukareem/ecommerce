@@ -15,10 +15,21 @@ use Illuminate\Support\Facades\Route;
 */
 
 // Public routes
-Route::post('/auth/register', [App\Http\Controllers\AuthController::class, 'register']);
-Route::post('/auth/login', [App\Http\Controllers\AuthController::class, 'login']);
-Route::post('/auth/forgot-password', [App\Http\Controllers\AuthController::class, 'forgotPassword']);
-Route::post('/auth/reset-password', [App\Http\Controllers\AuthController::class, 'resetPassword']);
+Route::get('/health', [App\Http\Controllers\ObservabilityController::class, 'health']);
+
+Route::middleware('throttle:10,1')->group(function () {
+    Route::post('/auth/register', [App\Http\Controllers\AuthController::class, 'register']);
+    Route::post('/auth/login', [App\Http\Controllers\AuthController::class, 'login']);
+    Route::post('/auth/forgot-password', [App\Http\Controllers\AuthController::class, 'forgotPassword']);
+    Route::post('/auth/reset-password', [App\Http\Controllers\AuthController::class, 'resetPassword']);
+});
+Route::post('/payments/webhook/{provider}', [App\Http\Controllers\PaymentController::class, 'webhook'])
+    ->whereIn('provider', ['dummy', 'paystack', 'flutterwave']);
+Route::get('/payments/gateways', [App\Http\Controllers\PaymentController::class, 'gateways']);
+Route::get('/locations/countries', [App\Http\Controllers\LocationController::class, 'countries']);
+Route::get('/locations/states', [App\Http\Controllers\LocationController::class, 'states']);
+Route::get('/locations/cities', [App\Http\Controllers\LocationController::class, 'cities']);
+Route::get('/locations/autocomplete', [App\Http\Controllers\LocationController::class, 'autocomplete']);
 
 // Public catalog routes (no auth required)
 Route::get('/products', [App\Http\Controllers\CatalogController::class, 'index']);
@@ -35,24 +46,37 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::patch('/profile', [App\Http\Controllers\AuthController::class, 'updateProfile']);
     Route::post('/profile/change-password', [App\Http\Controllers\AuthController::class, 'changePassword']);
 
-    // Cart & Checkout
-    Route::get('/cart', [App\Http\Controllers\CartController::class, 'show']);
-    Route::post('/cart/items', [App\Http\Controllers\CartController::class, 'addItem']);
-    Route::patch('/cart/items/{id}', [App\Http\Controllers\CartController::class, 'updateItem']);
-    Route::delete('/cart/items/{id}', [App\Http\Controllers\CartController::class, 'removeItem']);
-    Route::delete('/cart', [App\Http\Controllers\CartController::class, 'clear']);
-    Route::post('/cart/merge', [App\Http\Controllers\CartController::class, 'merge']);
+    Route::middleware('customer')->group(function () {
+        // Cart & Checkout
+        Route::get('/cart', [App\Http\Controllers\CartController::class, 'show']);
+        Route::post('/cart/items', [App\Http\Controllers\CartController::class, 'addItem']);
+        Route::put('/cart/items/{id}', [App\Http\Controllers\CartController::class, 'updateItem']);
+        Route::delete('/cart/items/{id}', [App\Http\Controllers\CartController::class, 'removeItem']);
+        Route::post('/cart/apply-coupon', [App\Http\Controllers\CartController::class, 'applyCoupon']);
+        Route::delete('/cart/coupon', [App\Http\Controllers\CartController::class, 'removeCoupon']);
+        Route::delete('/cart', [App\Http\Controllers\CartController::class, 'clear']);
+        Route::post('/cart/merge', [App\Http\Controllers\CartController::class, 'merge']);
 
-    Route::post('/checkout/quote-shipping', [App\Http\Controllers\CheckoutController::class, 'quoteShipping']);
-    Route::post('/checkout/place-order', [App\Http\Controllers\CheckoutController::class, 'placeOrder']);
+        // Customer addresses
+        Route::get('/addresses', [App\Http\Controllers\AddressController::class, 'index']);
+        Route::post('/addresses', [App\Http\Controllers\AddressController::class, 'store']);
+        Route::put('/addresses/{id}', [App\Http\Controllers\AddressController::class, 'update']);
+        Route::delete('/addresses/{id}', [App\Http\Controllers\AddressController::class, 'destroy']);
+        Route::patch('/addresses/{id}/default', [App\Http\Controllers\AddressController::class, 'setDefault']);
 
-    // Customer Orders
-    Route::get('/orders', [App\Http\Controllers\OrderController::class, 'index']);
-    Route::get('/orders/{id}', [App\Http\Controllers\OrderController::class, 'show']);
-    Route::post('/orders/{id}/cancel', [App\Http\Controllers\OrderController::class, 'cancel']);
+        Route::post('/checkout/quote-shipping', [App\Http\Controllers\CheckoutController::class, 'quoteShipping']);
+        Route::post('/checkout/place-order', [App\Http\Controllers\CheckoutController::class, 'placeOrder']);
+        Route::post('/payments/orders/{orderId}/initialize', [App\Http\Controllers\PaymentController::class, 'initialize']);
+        Route::post('/payments/{paymentId}/verify', [App\Http\Controllers\PaymentController::class, 'verify']);
+
+        // Customer Orders
+        Route::get('/orders', [App\Http\Controllers\OrderController::class, 'index']);
+        Route::get('/orders/{id}', [App\Http\Controllers\OrderController::class, 'show']);
+        Route::post('/orders/{id}/cancel', [App\Http\Controllers\OrderController::class, 'cancel']);
+    });
 
     // Vendor/Admin Product Management
-    Route::prefix('vendor')->group(function () {
+    Route::prefix('vendor')->middleware('vendor')->group(function () {
         Route::get('/products', [App\Http\Controllers\ProductController::class, 'index']);
         Route::post('/products', [App\Http\Controllers\ProductController::class, 'store']);
         Route::get('/products/{id}', [App\Http\Controllers\ProductController::class, 'show']);
@@ -66,7 +90,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
     });
 
     // Logistics – admin & vendor only
-    Route::prefix('shipping')->group(function () {
+    Route::prefix('shipping')->middleware('admin')->group(function () {
         Route::get('/zones', [App\Http\Controllers\LogisticsController::class, 'zones']);
         Route::post('/zones', [App\Http\Controllers\LogisticsController::class, 'storeZone']);
         Route::post('/zones/{id}/rules', [App\Http\Controllers\LogisticsController::class, 'storeZoneRule']);
@@ -133,8 +157,12 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::put('/settings', [App\Http\Controllers\Admin\SettingsController::class, 'update']);
         Route::get('/settings/currency', [App\Http\Controllers\Admin\SettingsController::class, 'getCurrency']);
         Route::put('/settings/currency', [App\Http\Controllers\Admin\SettingsController::class, 'updateCurrency']);
-        Route::get('/settings/payment-gateway', [App\Http\Controllers\Admin\SettingsController::class, 'getPaymentGateway']);
-        Route::put('/settings/payment-gateway', [App\Http\Controllers\Admin\SettingsController::class, 'updatePaymentGateway']);
+
+        // Payment Gateways Management
+        Route::get('/payment-gateways', [App\Http\Controllers\Admin\PaymentGatewayController::class, 'index']);
+        Route::put('/payment-gateways/{provider}', [App\Http\Controllers\Admin\PaymentGatewayController::class, 'update']);
+        Route::post('/payment-gateways/reorder', [App\Http\Controllers\Admin\PaymentGatewayController::class, 'reorder']);
+        Route::post('/payment-gateways/{provider}/set-default', [App\Http\Controllers\Admin\PaymentGatewayController::class, 'setDefault']);
 
         // Order Management
         Route::get('/orders', [App\Http\Controllers\Admin\OrderController::class, 'index']);
@@ -143,6 +171,14 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('/orders/{id}', [App\Http\Controllers\Admin\OrderController::class, 'show']);
         Route::put('/orders/{id}/status', [App\Http\Controllers\Admin\OrderController::class, 'updateStatus']);
         Route::put('/orders/{id}/payment-status', [App\Http\Controllers\Admin\OrderController::class, 'updatePaymentStatus']);
+        Route::put('/orders/{id}/delivery-assignment', [App\Http\Controllers\Admin\OrderController::class, 'assignDeliveryPartner']);
+        Route::put('/orders/{id}/delivery-status', [App\Http\Controllers\Admin\OrderController::class, 'updateDeliveryStatus']);
+
+        // Delivery partners
+        Route::get('/delivery-partners', [App\Http\Controllers\Admin\DeliveryPartnerController::class, 'index']);
+        Route::post('/delivery-partners', [App\Http\Controllers\Admin\DeliveryPartnerController::class, 'store']);
+        Route::put('/delivery-partners/{id}', [App\Http\Controllers\Admin\DeliveryPartnerController::class, 'update']);
+        Route::patch('/delivery-partners/{id}/status', [App\Http\Controllers\Admin\DeliveryPartnerController::class, 'updateStatus']);
 
         // Review Moderation
         Route::get('/reviews', [App\Http\Controllers\ReviewController::class, 'adminIndex']);

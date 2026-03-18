@@ -3,7 +3,6 @@
 namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 
@@ -16,15 +15,6 @@ class PermissionsSeeder extends Seeder
     {
         // Reset cached roles and permissions
         app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
-
-        // Delete existing roles and permissions with wrong guard
-        DB::statement('SET FOREIGN_KEY_CHECKS=0;');
-        DB::table('role_has_permissions')->truncate();
-        DB::table('model_has_roles')->truncate();
-        DB::table('model_has_permissions')->truncate();
-        DB::table('roles')->truncate();
-        DB::table('permissions')->truncate();
-        DB::statement('SET FOREIGN_KEY_CHECKS=1;');
 
         // Create permissions
         $permissions = [
@@ -77,10 +67,10 @@ class PermissionsSeeder extends Seeder
         $customerRole = Role::firstOrCreate(['name' => 'Customer', 'guard_name' => 'sanctum']);
 
         // Admin gets all permissions
-        $adminRole->givePermissionTo(Permission::all());
+        $adminRole->syncPermissions(Permission::all());
 
         // Vendor gets limited permissions
-        $vendorRole->givePermissionTo([
+        $vendorRole->syncPermissions([
             'view products',
             'create products',
             'edit products',
@@ -89,7 +79,7 @@ class PermissionsSeeder extends Seeder
         ]);
 
         // Customer gets minimal permissions
-        $customerRole->givePermissionTo([
+        $customerRole->syncPermissions([
             'view products',
             'view categories',
         ]);

@@ -4,9 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\Cart;
 use App\Models\CartItem;
+use App\Models\Coupon;
 use App\Models\Sku;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 
 /**
  * Manage the shopping cart stored in the database.
@@ -19,14 +19,19 @@ class CartController extends Controller
     protected function getCart(Request $request)
     {
         $user = $request->user();
-        $sessionId = $request->session()->getId();
 
         if ($user) {
             $cart = Cart::firstOrCreate(
                 ['user_id' => $user->id],
-                ['session_id' => $sessionId]
+                ['session_id' => null]
             );
         } else {
+            $sessionId = $request->hasSession() ? $request->session()->getId() : $request->header('X-Session-Id');
+
+            if (!$sessionId) {
+                abort(422, 'Session id is required for guest carts');
+            }
+
             $cart = Cart::firstOrCreate(
                 ['session_id' => $sessionId],
                 ['user_id' => null]
@@ -41,7 +46,7 @@ class CartController extends Controller
      */
     public function show(Request $request)
     {
-        $cart = $this->getCart($request);
+        $cart = $this->getCart($request)->load(['coupon']);
 
         $items = $cart->items()
             ->with(['sku.product', 'sku.stocks'])
@@ -67,11 +72,21 @@ class CartController extends Controller
                 ];
             });
 
-        $total = $items->sum('subtotal');
+        $subtotal = (float) $items->sum('subtotal');
+        $discount = (float) ($cart->coupon_discount ?? 0);
+        $total = max(0, $subtotal - $discount);
 
         return response()->json([
             'cart_id' => $cart->id,
             'items' => $items,
+            'coupon' => $cart->coupon ? [
+                'id' => $cart->coupon->id,
+                'code' => $cart->coupon->code,
+                'discount_type' => $cart->coupon->discount_type,
+                'discount_value' => $cart->coupon->discount_value,
+            ] : null,
+            'subtotal' => $subtotal,
+            'discount' => $discount,
             'total' => $total,
             'item_count' => $items->sum('quantity'),
         ]);
@@ -128,6 +143,7 @@ class CartController extends Controller
         return response()->json([
             'message' => 'Item added to cart',
             'cart_item' => $cartItem->load('sku.product'),
+            'cart' => $this->show($request)->getData(true),
         ], 201);
     }
 
@@ -160,6 +176,7 @@ class CartController extends Controller
         return response()->json([
             'message' => 'Cart item updated',
             'cart_item' => $cartItem->fresh()->load('sku.product'),
+            'cart' => $this->show($request)->getData(true),
         ]);
     }
 
@@ -175,6 +192,7 @@ class CartController extends Controller
 
         return response()->json([
             'message' => 'Item removed from cart',
+            'cart' => $this->show($request)->getData(true),
         ]);
     }
 
@@ -185,9 +203,73 @@ class CartController extends Controller
     {
         $cart = $this->getCart($request);
         $cart->items()->delete();
+        $cart->update([
+            'coupon_id' => null,
+            'coupon_discount' => 0,
+        ]);
 
         return response()->json([
             'message' => 'Cart cleared',
+        ]);
+    }
+
+    public function applyCoupon(Request $request)
+    {
+        $request->validate([
+            'code' => 'required|string|max:64',
+        ]);
+
+        $cart = $this->getCart($request)->load('items', 'coupon');
+        if ($cart->items->isEmpty()) {
+            return response()->json([
+                'message' => 'Cannot apply coupon to an empty cart',
+            ], 422);
+        }
+
+        $coupon = Coupon::whereRaw('LOWER(code) = ?', [strtolower($request->code)])->first();
+        if (!$coupon) {
+            return response()->json([
+                'message' => 'Invalid coupon code',
+            ], 422);
+        }
+
+        $subtotal = (float) $cart->items->sum(fn ($item) => $item->price * $item->quantity);
+        if (!$coupon->isUsable($subtotal)) {
+            return response()->json([
+                'message' => 'Coupon is not valid for this cart',
+            ], 422);
+        }
+
+        $discount = $coupon->calculateDiscount($subtotal);
+        $cart->update([
+            'coupon_id' => $coupon->id,
+            'coupon_discount' => $discount,
+        ]);
+
+        return response()->json([
+            'message' => 'Coupon applied successfully',
+            'coupon' => [
+                'id' => $coupon->id,
+                'code' => $coupon->code,
+                'discount_type' => $coupon->discount_type,
+                'discount_value' => $coupon->discount_value,
+                'discount' => $discount,
+            ],
+            'cart' => $this->show($request)->getData(true),
+        ]);
+    }
+
+    public function removeCoupon(Request $request)
+    {
+        $cart = $this->getCart($request);
+        $cart->update([
+            'coupon_id' => null,
+            'coupon_discount' => 0,
+        ]);
+
+        return response()->json([
+            'message' => 'Coupon removed',
+            'cart' => $this->show($request)->getData(true),
         ]);
     }
 

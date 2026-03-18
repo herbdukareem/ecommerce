@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ShippingMethod;
+use App\Models\ShippingZone;
+use App\Models\ShippingZoneRule;
 use Illuminate\Http\Request;
 
 /**
@@ -11,8 +14,8 @@ class LogisticsController extends Controller
 {
     public function zones()
     {
-        // TODO: return configured shipping zones with rules.
-        return response()->json(['zones' => []]);
+        $zones = ShippingZone::with('rules')->orderBy('name')->get();
+        return response()->json(['zones' => $zones]);
     }
 
     public function storeZone(Request $request)
@@ -21,26 +24,42 @@ class LogisticsController extends Controller
             'name' => 'required|string',
             'region' => 'required|string',
         ]);
-        // TODO: create shipping zone record.
-        return response()->json(['message' => 'Zone created'], 201);
+
+        $zone = ShippingZone::create([
+            'name' => $request->name,
+            'region' => $request->region,
+        ]);
+
+        return response()->json([
+            'message' => 'Zone created',
+            'zone' => $zone,
+        ], 201);
     }
 
     public function storeZoneRule(Request $request, $id)
     {
         $request->validate([
-            'rule_type' => 'required|string',
+            'rule_type' => 'required|string|in:flat,weight_based,price_based,free',
             'config' => 'required|array',
         ]);
-        // TODO: attach rule to zone.
-        return response()->json(['message' => 'Rule added'], 201);
+
+        $zone = ShippingZone::findOrFail($id);
+        $rule = ShippingZoneRule::create([
+            'shipping_zone_id' => $zone->id,
+            'rule_type' => $request->rule_type,
+            'config' => $request->config,
+        ]);
+
+        return response()->json([
+            'message' => 'Rule added',
+            'rule' => $rule,
+        ], 201);
     }
 
     public function methods()
     {
-        // TODO: return available shipping methods.
-        return response()->json(['methods' => [
-            ['name' => 'standard'],
-            ['name' => 'express'],
-        ]]);
+        return response()->json([
+            'methods' => ShippingMethod::where('active', true)->orderBy('name')->get(),
+        ]);
     }
 }

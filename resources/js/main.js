@@ -18,11 +18,12 @@ axios.interceptors.response.use(
   response => response,
   error => {
     if (error.response?.status === 401) {
-      // Unauthorized - clear auth and redirect to login
+      // Unauthorized - clear auth. Only redirect when user is in admin area.
       localStorage.removeItem('token');
       delete axios.defaults.headers.common['Authorization'];
-      if (router.currentRoute.value.path !== '/login') {
-        router.push('/login');
+      const currentPath = router.currentRoute.value.path || '';
+      if (currentPath.startsWith('/admin') && currentPath !== '/admin/login') {
+        router.push('/admin/login');
       }
     }
     return Promise.reject(error);

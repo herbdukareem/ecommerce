@@ -66,18 +66,13 @@
           <h3 class="text-sm font-semibold text-primary mb-4 uppercase tracking-wider">Customer Service</h3>
           <ul class="space-y-2">
             <li>
-              <router-link to="/dashboard" class="text-sm text-secondary hover:text-primary transition-colors">
+              <router-link to="/account" class="text-sm text-secondary hover:text-primary transition-colors">
                 My Account
               </router-link>
             </li>
             <li>
               <router-link to="/orders" class="text-sm text-secondary hover:text-primary transition-colors">
                 Track Order
-              </router-link>
-            </li>
-            <li>
-              <router-link to="/wishlist" class="text-sm text-secondary hover:text-primary transition-colors">
-                Wishlist
               </router-link>
             </li>
             <li>
