@@ -327,5 +327,111 @@ class ProductController extends Controller
             'message' => 'Products updated successfully'
         ]);
     }
+
+    public function uploadImages(Request $request, int $id)
+    {
+        $product = Product::with('images')->findOrFail($id);
+
+        $data = $request->validate([
+            'images' => 'required|array|min:1',
+            'images.*' => 'required|image|max:10240',
+        ]);
+
+        $orderOffset = (int) $product->images()->max('order') + 1;
+
+        foreach ($data['images'] as $index => $image) {
+            $path = $image->store('products', 'public');
+            $imageUrl = Storage::url($path);
+
+            ProductImage::create([
+                'product_id' => $product->id,
+                'image_path' => $path,
+                'image_url' => $imageUrl,
+                'is_primary' => $product->images()->count() === 0 && $index === 0,
+                'order' => $orderOffset + $index,
+            ]);
+        }
+
+        $this->syncProductPrimaryImage($product->fresh('images'));
+
+        return response()->json([
+            'message' => 'Product images uploaded successfully.',
+            'images' => $product->fresh('images')->images,
+        ]);
+    }
+
+    public function reorderImages(Request $request, int $id)
+    {
+        $product = Product::with('images')->findOrFail($id);
+
+        $data = $request->validate([
+            'image_ids' => 'required|array|min:1',
+            'image_ids.*' => 'required|integer|exists:product_images,id',
+        ]);
+
+        $productImageIds = $product->images->pluck('id')->values()->all();
+        $incomingIds = collect($data['image_ids'])->map(fn ($value) => (int) $value)->values()->all();
+
+        sort($productImageIds);
+        $sortedIncoming = $incomingIds;
+        sort($sortedIncoming);
+
+        if ($productImageIds !== $sortedIncoming) {
+            return response()->json(['message' => 'Image set does not match this product.'], 422);
+        }
+
+        foreach ($incomingIds as $index => $imageId) {
+            ProductImage::where('id', $imageId)->update(['order' => $index]);
+        }
+
+        return response()->json([
+            'message' => 'Product image order updated successfully.',
+            'images' => $product->fresh('images')->images,
+        ]);
+    }
+
+    public function setPrimaryImage(int $id, int $imageId)
+    {
+        $product = Product::with('images')->findOrFail($id);
+        $image = $product->images()->where('id', $imageId)->firstOrFail();
+
+        $product->images()->update(['is_primary' => false]);
+        $image->update(['is_primary' => true]);
+
+        $this->syncProductPrimaryImage($product->fresh('images'));
+
+        return response()->json([
+            'message' => 'Primary image updated successfully.',
+            'images' => $product->fresh('images')->images,
+        ]);
+    }
+
+    public function deleteImage(int $id, int $imageId)
+    {
+        $product = Product::with('images')->findOrFail($id);
+        $image = $product->images()->where('id', $imageId)->firstOrFail();
+
+        Storage::disk('public')->delete($image->image_path);
+        $image->delete();
+
+        $remaining = $product->fresh('images');
+        if ($remaining->images->isNotEmpty() && !$remaining->images->contains(fn ($entry) => (bool) $entry->is_primary)) {
+            $first = $remaining->images->sortBy('order')->first();
+            $first?->update(['is_primary' => true]);
+        }
+
+        $this->syncProductPrimaryImage($product->fresh('images'));
+
+        return response()->json([
+            'message' => 'Image deleted successfully.',
+            'images' => $product->fresh('images')->images,
+        ]);
+    }
+
+    protected function syncProductPrimaryImage(Product $product): void
+    {
+        $primary = $product->images->firstWhere('is_primary', true) ?: $product->images->sortBy('order')->first();
+        $product->update(['image' => $primary?->image_url]);
+    }
 }
 

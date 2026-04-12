@@ -49,7 +49,7 @@ class CartController extends Controller
         $cart = $this->getCart($request)->load(['coupon']);
 
         $items = $cart->items()
-            ->with(['sku.product', 'sku.stocks'])
+            ->with(['sku.product.images', 'sku.stocks'])
             ->get()
             ->map(function ($item) {
                 $sku = $item->sku;
@@ -64,6 +64,8 @@ class CartController extends Controller
                     'product_id' => $sku->product->id,
                     'product_title' => $sku->product->title,
                     'product_slug' => $sku->product->slug,
+                    'product_image' => $sku->product->image,
+                    'product_images' => $sku->product->images()->orderBy('order')->get(['id', 'image_url', 'image_path', 'is_primary', 'order']),
                     'price' => $sku->price,
                     'quantity' => $item->quantity,
                     'subtotal' => $sku->price * $item->quantity,

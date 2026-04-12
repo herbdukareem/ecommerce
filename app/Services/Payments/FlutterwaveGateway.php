@@ -12,12 +12,16 @@ class FlutterwaveGateway implements PaymentGatewayInterface
     protected string $baseUrl;
     protected ?string $secret;
     protected ?string $webhookSecret;
+    protected string $currency;
+    protected ?string $redirectUrl;
 
-    public function __construct()
+    public function __construct(array $config = [])
     {
-        $this->baseUrl = rtrim(config('services.flutterwave.base_url', 'https://api.flutterwave.com/v3'), '/');
-        $this->secret = config('services.flutterwave.secret_key');
-        $this->webhookSecret = config('services.flutterwave.webhook_secret');
+        $this->baseUrl = rtrim((string) ($config['base_url'] ?? config('services.flutterwave.base_url', 'https://api.flutterwave.com/v3')), '/');
+        $this->secret = $config['secret_key'] ?? config('services.flutterwave.secret_key');
+        $this->webhookSecret = $config['webhook_secret'] ?? config('services.flutterwave.webhook_secret');
+        $this->currency = (string) ($config['currency'] ?? config('services.flutterwave.currency', 'NGN'));
+        $this->redirectUrl = $config['redirect_url'] ?? config('services.flutterwave.redirect_url') ?: config('app.url') . '/dashboard';
     }
 
     public function provider(): string
@@ -38,8 +42,8 @@ class FlutterwaveGateway implements PaymentGatewayInterface
             ->post($this->baseUrl . '/payments', [
                 'tx_ref' => $reference,
                 'amount' => (float) $payment->amount,
-                'currency' => config('services.flutterwave.currency', 'NGN'),
-                'redirect_url' => config('services.flutterwave.redirect_url') ?: config('app.url') . '/dashboard',
+                'currency' => $this->currency,
+                'redirect_url' => $this->redirectUrl,
                 'customer' => [
                     'email' => $email,
                     'name' => $metadata['customer_name'] ?? 'Customer',

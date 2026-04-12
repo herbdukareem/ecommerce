@@ -2,18 +2,19 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Cart;
-use App\Models\Order;
-use App\Models\OrderItem;
 use App\Models\Address;
-use App\Models\Payment;
-use App\Services\InventoryService;
+use App\Models\Cart;
+use App\Models\DispatchTimeSlot;
+use App\Models\OperationArea;
+use App\Models\OperationCity;
+use App\Services\OrderPlacementService;
 use App\Services\PaymentGatewayManager;
 use App\Services\ShippingRateService;
 use App\Mail\OrderConfirmation;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -21,18 +22,18 @@ use Illuminate\Validation\ValidationException;
  */
 class CheckoutController extends Controller
 {
-    protected $inventoryService;
     protected $shippingService;
+    protected $orderPlacementService;
     protected $gatewayManager;
 
     public function __construct(
-        InventoryService $inventoryService,
         ShippingRateService $shippingService,
+        OrderPlacementService $orderPlacementService,
         PaymentGatewayManager $gatewayManager
     )
     {
-        $this->inventoryService = $inventoryService;
         $this->shippingService = $shippingService;
+        $this->orderPlacementService = $orderPlacementService;
         $this->gatewayManager = $gatewayManager;
     }
 
@@ -100,85 +101,148 @@ class CheckoutController extends Controller
         ]);
     }
 
+    public function operationalCities()
+    {
+        $cities = OperationCity::query()
+            ->active()
+            ->orderByRaw('COALESCE(sort_order, 9999) asc')
+            ->orderBy('name')
+            ->get(['id', 'name', 'code']);
+
+        return response()->json([
+            'cities' => $cities,
+        ]);
+    }
+
+    public function operationalAreas(Request $request)
+    {
+        $validated = $request->validate([
+            'city_id' => 'required|integer|exists:operation_cities,id',
+        ]);
+
+        $areas = OperationArea::query()
+            ->active()
+            ->where('city_id', $validated['city_id'])
+            ->orderByRaw('COALESCE(sort_order, 9999) asc')
+            ->orderBy('name')
+            ->get(['id', 'city_id', 'name', 'delivery_fee']);
+
+        return response()->json([
+            'areas' => $areas,
+        ]);
+    }
+
+    public function dispatchTimeSlots()
+    {
+        $slots = DispatchTimeSlot::query()
+            ->active()
+            ->orderBy('sort_order')
+            ->orderBy('start_time')
+            ->get(['id', 'label', 'start_time', 'end_time', 'description'])
+            ->map(function (DispatchTimeSlot $slot) {
+                return [
+                    'id' => $slot->id,
+                    'label' => $slot->label,
+                    'start_time' => $slot->start_time,
+                    'end_time' => $slot->end_time,
+                    'display_time' => date('g:i A', strtotime((string) $slot->start_time)) . ' - ' . date('g:i A', strtotime((string) $slot->end_time)),
+                    'description' => $slot->description,
+                ];
+            })
+            ->values();
+
+        return response()->json([
+            'dispatch_time_slots' => $slots,
+        ]);
+    }
+
     /**
-     * Place an order (reserve inventory and create order).
+     * Place an order with simplified checkout payload.
      */
     public function placeOrder(Request $request)
     {
-        $request->validate([
-            'address_id' => 'required|exists:addresses,id',
-            'payment_method' => 'nullable|string|in:card,bank_transfer,wallet',
-            'payment_provider' => 'nullable|string|in:paystack,flutterwave',
-            'shipping_method' => 'required|string',
-        ]);
-
         $user = $request->user();
         if (!$user) {
             return response()->json(['message' => 'Authentication required'], 401);
         }
 
-        // Verify address belongs to user
-        $address = Address::where('id', $request->address_id)
-            ->where('user_id', $user->id)
-            ->firstOrFail();
-
-        $cart = Cart::with('coupon')->where('user_id', $user->id)->first();
-
-        if (!$cart || $cart->items->isEmpty()) {
-            return response()->json([
-                'message' => 'Cart is empty',
-            ], 422);
-        }
+        $payload = $this->resolveCheckoutPayload($request, $user->id);
 
         try {
-            $order = DB::transaction(function () use ($request, $user, $address, $cart) {
-                // Prepare items for inventory reservation
-                $inventoryItems = $cart->items->map(function ($item) {
-                    return [
-                        'sku' => $item->sku,
-                        'qty' => $item->quantity,
-                    ];
-                })->toArray();
+            $order = $this->orderPlacementService->placeCustomerCartOrder($user, $payload);
 
-                // Reserve inventory
-                if (!$this->inventoryService->reserve($inventoryItems)) {
-                    throw ValidationException::withMessages([
-                        'cart' => ['Insufficient stock for one or more items'],
-                    ]);
-                }
+            // Send order confirmation email
+            Mail::to($user->email)->queue(new OrderConfirmation($order));
 
-                // Calculate totals
-                $subtotal = $cart->items->sum(function ($item) {
-                    return $item->price * $item->quantity;
-                });
+            return response()->json([
+                'message' => 'Order placed successfully',
+                'order' => $order->load(['items.sku.product', 'city', 'area', 'dispatchTimeSlot']),
+            ], 201);
 
-                $discount = (float) ($cart->coupon_discount ?? 0);
+        } catch (ValidationException $e) {
+            throw $e;
+        } catch (\Exception $e) {
+            throw $e;
+        }
+    }
 
-                // Get shipping cost
-                $destination = $this->addressToDestination($address);
-                $this->validateDestinationForDelivery($destination);
+    protected function resolveCheckoutPayload(Request $request, int $userId): array
+    {
+        if ($request->filled('address_id')) {
+            $validated = $request->validate([
+                'address_id' => 'required|integer|exists:addresses,id',
+                'payment_method' => 'nullable|string',
+                'payment_provider' => ['required', 'string', Rule::in(PaymentGatewayManager::SUPPORTED_PROVIDERS)],
+                'order_note' => 'nullable|string|max:1000',
+                'payment_reference' => 'nullable|string|max:120',
+            ]);
 
-                $shippingItems = $cart->items->map(function ($item) {
-                    return [
-                        'sku' => $item->sku,
-                        'quantity' => $item->quantity,
-                    ];
-                })->toArray();
+            $address = Address::query()
+                ->where('id', (int) $validated['address_id'])
+                ->where('user_id', $userId)
+                ->firstOrFail();
 
-                $quotes = $this->shippingService->quote($destination, $shippingItems);
-                $shippingQuote = collect($quotes)->firstWhere('method', $request->shipping_method);
+            $cityName = trim((string) ($address->city_name ?: $address->city ?: 'Unknown City'));
+            $areaName = trim((string) ($address->area_or_district ?: 'General Area'));
 
-                if (!$shippingQuote) {
-                    throw ValidationException::withMessages([
-                        'shipping_method' => ['Selected delivery method is not available for this address.'],
-                    ]);
-                }
+            $city = OperationCity::firstOrCreate(
+                ['code' => Str::slug($cityName) ?: 'unknown-city'],
+                ['name' => $cityName, 'status' => 'active']
+            );
 
-                $shippingCost = $shippingQuote['amount'];
-                $tax = 0;
-                $total = max(0, $subtotal - $discount) + $shippingCost + $tax;
+            $area = OperationArea::firstOrCreate(
+                ['city_id' => $city->id, 'name' => $areaName],
+                ['status' => 'active', 'delivery_fee' => 0]
+            );
 
-                $deliveryAddressSnapshot = [
+            $slot = DispatchTimeSlot::query()->active()->orderBy('sort_order')->orderBy('start_time')->first();
+            if (!$slot) {
+                $slot = DispatchTimeSlot::create([
+                    'label' => 'Default dispatch',
+                    'start_time' => '09:00',
+                    'end_time' => '12:00',
+                    'status' => 'active',
+                    'sort_order' => 0,
+                ]);
+            }
+
+            $provider = (string) $validated['payment_provider'];
+            try {
+                $this->gatewayManager->resolveProviderForCheckout($provider);
+            } catch (\Throwable $exception) {
+                throw ValidationException::withMessages([
+                    'payment_provider' => ['Selected payment provider is not available.'],
+                ]);
+            }
+
+            return [
+                'city_id' => $city->id,
+                'area_id' => $area->id,
+                'dispatch_time_slot_id' => $slot->id,
+                'payment_mode' => (string) ($provider ?? 'card'),
+                'payment_reference' => $validated['payment_reference'] ?? null,
+                'order_note' => $validated['order_note'] ?? null,
+                'delivery_address_snapshot' => [
                     'full_name' => $address->full_name,
                     'phone' => $address->phone,
                     'email' => $address->email,
@@ -190,104 +254,36 @@ class CheckoutController extends Controller
                     'address_line_2' => $address->address_line_2,
                     'landmark' => $address->landmark,
                     'postal_code' => $address->postal_code,
-                    'delivery_note' => $address->delivery_note,
-                    'latitude' => $address->latitude,
-                    'longitude' => $address->longitude,
-                ];
-
-                // Create order
-                $order = Order::create([
-                    'user_id' => $user->id,
-                    'shipping_address_id' => $address->id,
-                    'shipping_zone_id' => $shippingQuote['zone_id'] ?? null,
-                    'shipping_method_id' => $shippingQuote['method_id'] ?? null,
-                    'status' => 'pending',
-                    'payment_status' => 'pending',
-                    'delivery_status' => 'pending_assignment',
-                    'subtotal' => $subtotal,
-                    'shipping_cost' => $shippingCost,
-                    'delivery_fee' => $shippingCost,
-                    'tax' => $tax,
-                    'total' => $total,
-                    'placed_at' => now(),
-                    'delivery_snapshot' => [
-                        'method' => $shippingQuote['method'] ?? null,
-                        'method_name' => $shippingQuote['name'] ?? null,
-                        'zone_name' => $shippingQuote['zone_name'] ?? null,
-                        'zone_id' => $shippingQuote['zone_id'] ?? null,
-                        'fee' => $shippingCost,
-                        'cod_available' => $shippingQuote['cod_available'] ?? false,
-                    ],
-                    'delivery_address_snapshot' => $deliveryAddressSnapshot,
-                ]);
-
-                // Create order items
-                foreach ($cart->items as $cartItem) {
-                    $sku = $cartItem->sku;
-                    OrderItem::create([
-                        'order_id' => $order->id,
-                        'sku_id' => $sku->id,
-                        'quantity' => $cartItem->quantity,
-                        'price_snapshot' => $cartItem->price,
-                        'weight_snapshot' => $sku->weight,
-                        'length_snapshot' => $sku->length,
-                        'width_snapshot' => $sku->width,
-                        'height_snapshot' => $sku->height,
-                    ]);
-                }
-
-                $provider = $request->payment_provider;
-
-                // Backward compatibility: if legacy payload uses payment_method as provider.
-                if (in_array($request->payment_method, PaymentGatewayManager::SUPPORTED_PROVIDERS, true)) {
-                    $provider = $request->payment_method;
-                }
-
-                $provider = $this->gatewayManager->resolveProviderForCheckout($provider);
-
-                // Create payment record
-                Payment::create([
-                    'order_id' => $order->id,
-                    'amount' => $total,
-                    'method' => $request->payment_method ?: 'card',
-                    'status' => 'pending',
-                    'gateway_response' => [
-                        'provider' => $provider,
-                        'mode' => 'runtime',
-                    ],
-                ]);
-
-                // Clear cart
-                $cart->items()->delete();
-                $cart->update([
-                    'coupon_id' => null,
-                    'coupon_discount' => 0,
-                ]);
-
-                return $order;
-            });
-
-            // Send order confirmation email
-            Mail::to($user->email)->queue(new OrderConfirmation($order));
-
-            return response()->json([
-                'message' => 'Order placed successfully',
-                'order' => $order->load(['items.sku.product', 'shippingAddress']),
-            ], 201);
-
-        } catch (ValidationException $e) {
-            throw $e;
-        } catch (\InvalidArgumentException $e) {
-            return response()->json([
-                'message' => $e->getMessage(),
-            ], 422);
-        } catch (\RuntimeException $e) {
-            return response()->json([
-                'message' => $e->getMessage(),
-            ], 422);
-        } catch (\Exception $e) {
-            throw $e;
+                ],
+            ];
         }
+
+        $validated = $request->validate([
+            'city_id' => 'required|integer|exists:operation_cities,id',
+            'area_id' => 'required|integer|exists:operation_areas,id',
+            'dispatch_time_slot_id' => 'required|integer|exists:dispatch_time_slots,id',
+            'payment_mode' => ['required', 'string', Rule::in(PaymentGatewayManager::SUPPORTED_PROVIDERS)],
+            'payment_reference' => 'nullable|string|max:120',
+            'order_note' => 'nullable|string|max:1000',
+        ]);
+
+        $city = OperationCity::query()->find($validated['city_id']);
+        $area = OperationArea::query()->find($validated['area_id']);
+        $slot = DispatchTimeSlot::query()->find($validated['dispatch_time_slot_id']);
+
+        if (!$city || $city->status !== 'active') {
+            throw ValidationException::withMessages(['city_id' => ['Selected city must be active.']]);
+        }
+
+        if (!$area || $area->status !== 'active' || (int) $area->city_id !== (int) $city->id) {
+            throw ValidationException::withMessages(['area_id' => ['Selected area must be active and belong to selected city.']]);
+        }
+
+        if (!$slot || $slot->status !== 'active') {
+            throw ValidationException::withMessages(['dispatch_time_slot_id' => ['Selected dispatch slot must be active.']]);
+        }
+
+        return $validated;
     }
 
     protected function resolveDestination(Request $request): array

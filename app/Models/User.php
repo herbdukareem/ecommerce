@@ -17,6 +17,11 @@ class User extends Authenticatable
     use HasApiTokens, HasFactory, Notifiable, HasRoles;
 
     /**
+     * Keep Spatie role/permission checks on the same guard used by seeded records.
+     */
+    protected string $guard_name = 'sanctum';
+
+    /**
      * The attributes that are mass assignable.
      *
      * @var array<int, string>
@@ -94,5 +99,10 @@ class User extends Authenticatable
     public function warehouses()
     {
         return $this->hasMany(Warehouse::class, 'vendor_id');
+    }
+
+    protected function getDefaultGuardName(): string
+    {
+        return $this->guard_name;
     }
 }

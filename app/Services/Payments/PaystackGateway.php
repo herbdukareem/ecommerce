@@ -11,11 +11,15 @@ class PaystackGateway implements PaymentGatewayInterface
 {
     protected string $baseUrl;
     protected ?string $secret;
+    protected ?string $webhookSecret;
+    protected ?string $callbackUrl;
 
-    public function __construct()
+    public function __construct(array $config = [])
     {
-        $this->baseUrl = rtrim(config('services.paystack.base_url', 'https://api.paystack.co'), '/');
-        $this->secret = config('services.paystack.secret_key');
+        $this->baseUrl = rtrim((string) ($config['base_url'] ?? config('services.paystack.base_url', 'https://api.paystack.co')), '/');
+        $this->secret = $config['secret_key'] ?? config('services.paystack.secret_key');
+        $this->webhookSecret = $config['webhook_secret'] ?? config('services.paystack.webhook_secret');
+        $this->callbackUrl = $config['callback_url'] ?? config('services.paystack.callback_url') ?: config('app.url') . '/dashboard';
     }
 
     public function provider(): string
@@ -37,7 +41,7 @@ class PaystackGateway implements PaymentGatewayInterface
                 'email' => $email,
                 'amount' => (int) round(((float) $payment->amount) * 100),
                 'reference' => $reference,
-                'callback_url' => config('services.paystack.callback_url') ?: config('app.url') . '/dashboard',
+                'callback_url' => $this->callbackUrl,
                 'metadata' => $metadata,
             ]);
 
@@ -108,7 +112,12 @@ class PaystackGateway implements PaymentGatewayInterface
             return false;
         }
 
-        $expected = hash_hmac('sha512', $rawPayload, $this->secret);
+        $key = $this->webhookSecret ?: $this->secret;
+        if (!$key) {
+            return false;
+        }
+
+        $expected = hash_hmac('sha512', $rawPayload, $key);
         return hash_equals($expected, $signature);
     }
 

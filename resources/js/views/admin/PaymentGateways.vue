@@ -4,7 +4,7 @@
       <div class="flex items-center justify-between">
         <div>
           <h1 class="text-2xl font-bold text-gray-900">Payment Gateways</h1>
-          <p class="text-sm text-gray-600 mt-1">Manage gateway behavior from admin while credentials stay in env.</p>
+          <p class="text-sm text-gray-600 mt-1">Manage gateway behavior and configure sandbox/live credentials per provider.</p>
         </div>
         <button
           @click="saveOrder"
@@ -85,6 +85,80 @@
             </div>
           </div>
 
+          <div class="mt-6 rounded-lg border border-gray-200 p-4 space-y-4">
+            <p class="text-sm font-semibold text-gray-900">Gateway Credentials</p>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div class="rounded-lg border border-gray-200 p-4 space-y-3">
+                <p class="text-sm font-medium text-gray-900">Sandbox Keys</p>
+                <input
+                  v-model="gateway.extra_config.credentials.sandbox.public_key"
+                  placeholder="Public key"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                />
+                <input
+                  v-model="gateway.extra_config.credentials.sandbox.secret_key"
+                  type="password"
+                  placeholder="Secret key (leave empty to keep current)"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                />
+                <input
+                  v-model="gateway.extra_config.credentials.sandbox.webhook_secret"
+                  type="password"
+                  placeholder="Webhook secret (leave empty to keep current)"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                />
+                <input
+                  v-model="gateway.extra_config.credentials.sandbox.callback_url"
+                  placeholder="Callback URL (Paystack)"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                />
+                <input
+                  v-model="gateway.extra_config.credentials.sandbox.redirect_url"
+                  placeholder="Redirect URL (Flutterwave)"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                />
+                <p class="text-xs text-gray-500">
+                  Secret key set: {{ gateway.extra_config.credentials.sandbox.has_secret_key ? 'Yes' : 'No' }}
+                </p>
+              </div>
+
+              <div class="rounded-lg border border-gray-200 p-4 space-y-3">
+                <p class="text-sm font-medium text-gray-900">Live Keys</p>
+                <input
+                  v-model="gateway.extra_config.credentials.live.public_key"
+                  placeholder="Public key"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                />
+                <input
+                  v-model="gateway.extra_config.credentials.live.secret_key"
+                  type="password"
+                  placeholder="Secret key (leave empty to keep current)"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                />
+                <input
+                  v-model="gateway.extra_config.credentials.live.webhook_secret"
+                  type="password"
+                  placeholder="Webhook secret (leave empty to keep current)"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                />
+                <input
+                  v-model="gateway.extra_config.credentials.live.callback_url"
+                  placeholder="Callback URL (Paystack)"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                />
+                <input
+                  v-model="gateway.extra_config.credentials.live.redirect_url"
+                  placeholder="Redirect URL (Flutterwave)"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                />
+                <p class="text-xs text-gray-500">
+                  Secret key set: {{ gateway.extra_config.credentials.live.has_secret_key ? 'Yes' : 'No' }}
+                </p>
+              </div>
+            </div>
+          </div>
+
           <div class="mt-4 flex justify-end">
             <button
               @click="saveGateway(gateway)"
@@ -114,7 +188,31 @@ const defaultGatewayLabel = computed(() => {
 
 const loadGateways = async () => {
   const { data } = await axios.get('/api/admin/payment-gateways');
-  gateways.value = data.gateways || [];
+  gateways.value = (data.gateways || []).map(ensureCredentialShape);
+};
+
+const ensureCredentialShape = (gateway) => {
+  const next = { ...gateway };
+  next.extra_config = next.extra_config || {};
+  next.extra_config.credentials = next.extra_config.credentials || {};
+
+  const ensureMode = (mode) => {
+    const current = next.extra_config.credentials[mode] || {};
+    next.extra_config.credentials[mode] = {
+      public_key: current.public_key || '',
+      secret_key: '',
+      webhook_secret: '',
+      callback_url: current.callback_url || '',
+      redirect_url: current.redirect_url || '',
+      has_secret_key: !!current.has_secret_key,
+      has_webhook_secret: !!current.has_webhook_secret,
+    };
+  };
+
+  ensureMode('sandbox');
+  ensureMode('live');
+
+  return next;
 };
 
 const onCurrenciesInput = (gateway, raw) => {
@@ -136,7 +234,7 @@ const saveGateway = async (gateway) => {
       supported_currencies: gateway.supported_currencies || ['NGN'],
       fee_type: gateway.fee_type,
       fee_value: gateway.fee_value || 0,
-      extra_config: gateway.extra_config || {},
+      extra_config: buildCredentialPayload(gateway.extra_config || {}),
     };
 
     await axios.put(`/api/admin/payment-gateways/${gateway.provider}`, payload);
@@ -145,6 +243,37 @@ const saveGateway = async (gateway) => {
   } catch (error) {
     toast?.error(error.response?.data?.message || 'Unable to save gateway');
   }
+};
+
+const buildCredentialPayload = (extraConfig) => {
+  const safe = {
+    ...(extraConfig || {}),
+    credentials: {},
+  };
+
+  const credentials = extraConfig?.credentials || {};
+  ['sandbox', 'live'].forEach((mode) => {
+    const current = credentials[mode] || {};
+    const modePayload = {
+      public_key: current.public_key || null,
+      callback_url: current.callback_url || null,
+      redirect_url: current.redirect_url || null,
+      base_url: current.base_url || null,
+      currency: current.currency || null,
+    };
+
+    const secret = typeof current.secret_key === 'string' ? current.secret_key.trim() : '';
+    const webhook = typeof current.webhook_secret === 'string' ? current.webhook_secret.trim() : '';
+    const encryption = typeof current.encryption_key === 'string' ? current.encryption_key.trim() : '';
+
+    if (secret) modePayload.secret_key = secret;
+    if (webhook) modePayload.webhook_secret = webhook;
+    if (encryption) modePayload.encryption_key = encryption;
+
+    safe.credentials[mode] = modePayload;
+  });
+
+  return safe;
 };
 
 const setDefault = async (gateway) => {

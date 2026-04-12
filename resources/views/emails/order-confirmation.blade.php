@@ -101,13 +101,15 @@
             
             <h3>Shipping Address:</h3>
             <p>
-                {{ $shippingAddress->recipient_name }}<br>
-                {{ $shippingAddress->line1 }}<br>
-                @if($shippingAddress->line2)
-                    {{ $shippingAddress->line2 }}<br>
+                {{ $shippingAddress->recipient_name ?? $shippingAddress->full_name ?? $shippingAddress->name ?? $order->user->name }}<br>
+                {{ $shippingAddress->line1 ?? $shippingAddress->address_line_1 ?? '-' }}<br>
+                @if(($shippingAddress->line2 ?? $shippingAddress->address_line_2 ?? null))
+                    {{ $shippingAddress->line2 ?? $shippingAddress->address_line_2 }}<br>
                 @endif
-                {{ $shippingAddress->city }}, {{ $shippingAddress->state }} {{ $shippingAddress->postal_code }}<br>
-                {{ $shippingAddress->country }}
+                {{ $shippingAddress->city ?? $shippingAddress->city_name ?? $order->city_name ?? 'N/A' }},
+                {{ $shippingAddress->state ?? $shippingAddress->state_name ?? 'N/A' }}
+                {{ $shippingAddress->postal_code ?? $shippingAddress->zip ?? '' }}<br>
+                {{ $shippingAddress->country ?? $shippingAddress->country_name ?? 'N/A' }}
             </p>
         </div>
         

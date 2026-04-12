@@ -39,6 +39,23 @@ class PaymentGatewayController extends Controller
             'fee_type' => ['nullable', Rule::in(['flat', 'percent'])],
             'fee_value' => 'nullable|numeric|min:0',
             'extra_config' => 'sometimes|array',
+            'extra_config.credentials' => 'sometimes|array',
+            'extra_config.credentials.sandbox' => 'sometimes|array',
+            'extra_config.credentials.live' => 'sometimes|array',
+            'extra_config.credentials.sandbox.public_key' => 'nullable|string|max:255',
+            'extra_config.credentials.sandbox.secret_key' => 'nullable|string|max:500',
+            'extra_config.credentials.sandbox.webhook_secret' => 'nullable|string|max:500',
+            'extra_config.credentials.sandbox.callback_url' => 'nullable|url|max:500',
+            'extra_config.credentials.sandbox.base_url' => 'nullable|url|max:500',
+            'extra_config.credentials.sandbox.redirect_url' => 'nullable|url|max:500',
+            'extra_config.credentials.sandbox.currency' => 'nullable|string|size:3',
+            'extra_config.credentials.live.public_key' => 'nullable|string|max:255',
+            'extra_config.credentials.live.secret_key' => 'nullable|string|max:500',
+            'extra_config.credentials.live.webhook_secret' => 'nullable|string|max:500',
+            'extra_config.credentials.live.callback_url' => 'nullable|url|max:500',
+            'extra_config.credentials.live.base_url' => 'nullable|url|max:500',
+            'extra_config.credentials.live.redirect_url' => 'nullable|url|max:500',
+            'extra_config.credentials.live.currency' => 'nullable|string|size:3',
         ]);
 
         $gateway = PaymentGateway::query()->where('provider', $provider)->firstOrFail();
@@ -47,15 +64,23 @@ class PaymentGatewayController extends Controller
             return response()->json(['message' => 'Default gateway must be visible at checkout.'], 422);
         }
 
+        $normalizedExtraConfig = array_key_exists('extra_config', $data)
+            ? $this->gatewayManager->normalizeExtraConfigForStorage($provider, $data['extra_config'], $gateway)
+            : ($gateway->extra_config ?? []);
+
         if ((array_key_exists('is_enabled', $data) && $data['is_enabled']) || ($gateway->is_enabled && !array_key_exists('is_enabled', $data))) {
             $nextMode = $data['mode'] ?? $gateway->mode;
-            $readiness = $this->gatewayManager->readiness($provider, $nextMode);
+            $readiness = $this->gatewayManager->readiness($provider, $nextMode, $normalizedExtraConfig);
             if (!$readiness['is_configured']) {
                 return response()->json([
-                    'message' => 'Gateway is not configured in environment variables.',
+                    'message' => 'Gateway is not configured for the selected mode.',
                     'readiness' => $readiness,
                 ], 422);
             }
+        }
+
+        if (array_key_exists('extra_config', $data)) {
+            $data['extra_config'] = $normalizedExtraConfig;
         }
 
         try {
@@ -92,9 +117,7 @@ class PaymentGatewayController extends Controller
 
         return response()->json([
             'message' => 'Payment gateway updated successfully.',
-            'gateway' => array_merge($gateway->toArray(), [
-                'readiness' => $this->gatewayManager->readiness($gateway->provider, $gateway->mode),
-            ]),
+            'gateway' => $this->gatewayManager->adminPayload($gateway),
         ]);
     }
 
@@ -132,9 +155,7 @@ class PaymentGatewayController extends Controller
 
         return response()->json([
             'message' => 'Default gateway updated successfully.',
-            'gateway' => array_merge($gateway->toArray(), [
-                'readiness' => $this->gatewayManager->readiness($gateway->provider, $gateway->mode),
-            ]),
+            'gateway' => $this->gatewayManager->adminPayload($gateway),
         ]);
     }
 }

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Order;
 use App\Models\Payment;
+use App\Models\PaymentGateway;
 use App\Services\Payments\DummyGateway;
 use App\Services\Payments\FlutterwaveGateway;
 use App\Services\Payments\PaystackGateway;
@@ -14,23 +15,14 @@ use Illuminate\Support\Str;
 
 class PaymentService
 {
-    /** @var array<string, PaymentGatewayInterface> */
-    protected array $gateways;
+    protected DummyGateway $dummyGateway;
 
     public function __construct(
-        protected ?PaymentGatewayInterface $gateway = null,
-        protected ?PaymentGatewayManager $gatewayManager = null
+        protected PaymentGatewayManager $gatewayManager,
+        protected ?PaymentGatewayInterface $gateway = null
     )
     {
-        $this->gateways = [
-            'dummy' => new DummyGateway(),
-            'paystack' => new PaystackGateway(),
-            'flutterwave' => new FlutterwaveGateway(),
-        ];
-
-        if ($this->gateway) {
-            $this->gateways[$this->gateway->provider()] = $this->gateway;
-        }
+        $this->dummyGateway = new DummyGateway();
     }
 
     public function initialize(Order $order, Payment $payment): array
@@ -143,46 +135,59 @@ class PaymentService
     protected function determineProvider(Payment $payment, ?string $fallbackProvider = null): string
     {
         $storedProvider = data_get($payment->gateway_response, 'provider');
-        if ($storedProvider && isset($this->gateways[$storedProvider])) {
+        if ($storedProvider && in_array($storedProvider, ['dummy', 'paystack', 'flutterwave'], true)) {
             return $storedProvider;
         }
 
-        if ($this->gatewayManager) {
-            try {
-                return $this->gatewayManager->resolveProviderForCheckout($fallbackProvider);
-            } catch (\Throwable $e) {
-                // Fall through to config-based fallback for historical/backward compatibility.
-            }
+        try {
+            return $this->gatewayManager->resolveProviderForCheckout($fallbackProvider);
+        } catch (\Throwable $e) {
+            // Fall through to config-based fallback for historical/backward compatibility.
         }
 
-        if ($fallbackProvider && isset($this->gateways[$fallbackProvider])) {
+        if ($fallbackProvider && in_array($fallbackProvider, ['dummy', 'paystack', 'flutterwave'], true)) {
             return $fallbackProvider;
         }
 
         $methodMap = (array) config('payments.method_map', []);
         $methodProvider = $payment->method ? ($methodMap[$payment->method] ?? null) : null;
-        if ($methodProvider && isset($this->gateways[$methodProvider])) {
+        if ($methodProvider && in_array($methodProvider, ['dummy', 'paystack', 'flutterwave'], true)) {
             return $methodProvider;
         }
 
         $defaultProvider = (string) config('payments.default_gateway', 'dummy');
-        return isset($this->gateways[$defaultProvider]) ? $defaultProvider : 'dummy';
+        return in_array($defaultProvider, ['dummy', 'paystack', 'flutterwave'], true) ? $defaultProvider : 'dummy';
     }
 
     protected function resolveGatewayByProvider(string $provider): PaymentGatewayInterface
     {
-        if (!isset($this->gateways[$provider])) {
-            return $this->gateways['dummy'];
+        if ($this->gateway && $this->gateway->provider() === $provider) {
+            return $this->gateway;
         }
 
-        if ($provider === 'paystack' && !config('services.paystack.secret_key')) {
-            return $this->gateways['dummy'];
+        if ($provider === 'dummy') {
+            return $this->dummyGateway;
         }
 
-        if ($provider === 'flutterwave' && !config('services.flutterwave.secret_key')) {
-            return $this->gateways['dummy'];
+        $gatewayMode = PaymentGateway::query()->where('provider', $provider)->value('mode') ?: 'sandbox';
+        $runtimeConfig = $this->gatewayManager->providerRuntimeConfig($provider, $gatewayMode);
+
+        if ($provider === 'paystack') {
+            if (empty($runtimeConfig['secret_key']) && !config('services.paystack.secret_key')) {
+                throw new \RuntimeException('Paystack is not configured for the selected mode.');
+            }
+
+            return new PaystackGateway($runtimeConfig);
         }
 
-        return $this->gateways[$provider];
+        if ($provider === 'flutterwave') {
+            if (empty($runtimeConfig['secret_key']) && !config('services.flutterwave.secret_key')) {
+                throw new \RuntimeException('Flutterwave is not configured for the selected mode.');
+            }
+
+            return new FlutterwaveGateway($runtimeConfig);
+        }
+
+        return $this->dummyGateway;
     }
 }

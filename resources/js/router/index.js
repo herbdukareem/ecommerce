@@ -34,6 +34,14 @@ const AdminOrdersManagement = () => import('../views/admin/OrdersManagement.vue'
 const AdminPaymentGateways = () => import('../views/admin/PaymentGateways.vue');
 const AdminDeliveryPartners = () => import('../views/admin/DeliveryPartners.vue');
 const AdminOrderDetail = () => import('../views/admin/OrderDetail.vue');
+const AdminDispatchTimeSlots = () => import('../views/admin/DispatchTimeSlots.vue');
+const AdminOperationCities = () => import('../views/admin/OperationCities.vue');
+const AdminOperationAreas = () => import('../views/admin/OperationAreas.vue');
+const AdminCreateOrder = () => import('../views/admin/CreateOrder.vue');
+const AdminInventoryManagement = () => import('../views/admin/InventoryManagement.vue');
+const AdminInventoryLedger = () => import('../views/admin/InventoryLedger.vue');
+const AdminExpiryAlerts = () => import('../views/admin/ExpiryAlerts.vue');
+const AdminProfitMargins = () => import('../views/admin/ProfitMargins.vue');
 
 const routes = [
   // Public routes
@@ -124,6 +132,12 @@ const routes = [
     meta: { requiresAdmin: true }
   },
   {
+    path: '/admin/orders/create',
+    name: 'AdminCreateOrder',
+    component: AdminCreateOrder,
+    meta: { requiresAdmin: true }
+  },
+  {
     path: '/admin/orders/:id',
     name: 'AdminOrderDetail',
     component: AdminOrderDetail,
@@ -139,6 +153,48 @@ const routes = [
     path: '/admin/delivery-partners',
     name: 'AdminDeliveryPartners',
     component: AdminDeliveryPartners,
+    meta: { requiresAdmin: true }
+  },
+  {
+    path: '/admin/dispatch-time-slots',
+    name: 'AdminDispatchTimeSlots',
+    component: AdminDispatchTimeSlots,
+    meta: { requiresAdmin: true }
+  },
+  {
+    path: '/admin/operation-cities',
+    name: 'AdminOperationCities',
+    component: AdminOperationCities,
+    meta: { requiresAdmin: true }
+  },
+  {
+    path: '/admin/operation-areas',
+    name: 'AdminOperationAreas',
+    component: AdminOperationAreas,
+    meta: { requiresAdmin: true }
+  },
+  {
+    path: '/admin/inventory',
+    name: 'AdminInventory',
+    component: AdminInventoryManagement,
+    meta: { requiresAdmin: true }
+  },
+  {
+    path: '/admin/inventory-ledger',
+    name: 'AdminInventoryLedger',
+    component: AdminInventoryLedger,
+    meta: { requiresAdmin: true }
+  },
+  {
+    path: '/admin/expiry-alerts',
+    name: 'AdminExpiryAlerts',
+    component: AdminExpiryAlerts,
+    meta: { requiresAdmin: true }
+  },
+  {
+    path: '/admin/profit-margins',
+    name: 'AdminProfitMargins',
+    component: AdminProfitMargins,
     meta: { requiresAdmin: true }
   },
 ];

@@ -2,11 +2,23 @@ const DEFAULT_PLACEHOLDER = '/images/placeholders/product-placeholder.svg';
 
 const normalizeUrl = (value) => {
   if (!value || typeof value !== 'string') return null;
-  const trimmed = value.trim();
+  const trimmed = value.trim().replace(/\\/g, '/');
   if (!trimmed) return null;
+
+  // Already absolute URL or root-relative URL.
   if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('/')) {
     return trimmed;
   }
+
+  // Common storage paths persisted from uploads.
+  if (trimmed.startsWith('storage/')) {
+    return `/${trimmed}`;
+  }
+
+  if (trimmed.startsWith('products/') || trimmed.startsWith('reviews/')) {
+    return `/storage/${trimmed}`;
+  }
+
   return `/${trimmed.replace(/^\/+/, '')}`;
 };
 

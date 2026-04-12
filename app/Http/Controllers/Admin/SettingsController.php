@@ -18,6 +18,14 @@ class SettingsController extends Controller
             return DB::table('settings')->pluck('value', 'key');
         });
 
+        $settings = collect($settings)->map(function ($value, $key) {
+            if ($this->isSensitiveSettingKey((string) $key)) {
+                return null;
+            }
+
+            return $value;
+        });
+
         return response()->json($settings);
     }
 
@@ -49,6 +57,10 @@ class SettingsController extends Controller
         ]);
 
         foreach ($data as $key => $value) {
+            if ($this->isSensitiveSettingKey((string) $key) && (is_null($value) || (is_string($value) && trim($value) === ''))) {
+                continue;
+            }
+
             DB::table('settings')->updateOrInsert(
                 ['key' => $key],
                 ['value' => is_array($value) ? json_encode($value) : $value, 'updated_at' => now()]
@@ -144,6 +156,16 @@ class SettingsController extends Controller
         return response()->json([
             'message' => 'Payment gateway updated successfully'
         ]);
+    }
+
+    protected function isSensitiveSettingKey(string $key): bool
+    {
+        $needle = strtolower($key);
+        return str_contains($needle, 'secret')
+            || str_contains($needle, 'token')
+            || str_contains($needle, 'password')
+            || str_contains($needle, 'private')
+            || str_contains($needle, 'encryption');
     }
 }
 

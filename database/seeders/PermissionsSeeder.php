@@ -55,6 +55,27 @@ class PermissionsSeeder extends Seeder
             'view users',
             'edit users',
             'delete users',
+
+            // New operations permissions
+            'dispatch-time.view',
+            'dispatch-time.create',
+            'dispatch-time.update',
+            'dispatch-time.delete',
+            'city.view',
+            'city.create',
+            'city.update',
+            'city.delete',
+            'area.view',
+            'area.create',
+            'area.update',
+            'area.delete',
+            'admin-order.create',
+            'product-image.manage',
+            'inventory.view',
+            'inventory.add-stock',
+            'inventory.ledger.view',
+            'inventory.expiry.manage',
+            'profit-report.view',
         ];
 
         foreach ($permissions as $permission) {

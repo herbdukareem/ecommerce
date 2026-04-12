@@ -37,15 +37,22 @@
 
       <!-- User Profile -->
       <div class="p-4 border-t border-DEFAULT">
-        <div class="flex items-center gap-3 p-3 rounded-lg bg-base hover:bg-primary/5 cursor-pointer transition-colors">
-          <div class="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-primary-dark flex items-center justify-center text-white font-semibold">
-            A
+        <div class="flex items-center gap-3 p-3 rounded-lg bg-base transition-colors">
+          <div class="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-primary-dark flex items-center justify-center text-white font-semibold uppercase">
+            {{ userInitial }}
           </div>
           <div class="flex-1 min-w-0">
-            <p class="text-sm font-semibold text-primary truncate">Admin User</p>
-            <p class="text-xs text-secondary truncate">admin@example.com</p>
+            <p class="text-sm font-semibold text-primary truncate">{{ displayName }}</p>
+            <p class="text-xs text-secondary truncate">{{ displayEmail }}</p>
           </div>
-          <i class="mdi mdi-chevron-right text-secondary"></i>
+          <button
+            @click="handleLogout"
+            class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-medium text-danger hover:bg-danger/10 transition-colors"
+            title="Logout"
+          >
+            <i class="mdi mdi-logout"></i>
+            <span>Logout</span>
+          </button>
         </div>
       </div>
     </aside>
@@ -111,27 +118,46 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import Badge from '../ui/Badge.vue';
 import ThemeSelector from '../ui/ThemeSelector.vue';
+import { useAuthStore } from '../../stores/auth';
+import { useCartStore } from '../../stores/cart';
 
 const router = useRouter();
 const sidebarOpen = ref(false);
+const authStore = useAuthStore();
+const cartStore = useCartStore();
+
+const displayName = computed(() => authStore.user?.name || 'Admin User');
+const displayEmail = computed(() => authStore.user?.email || 'admin@example.com');
+const userInitial = computed(() => (displayName.value || 'A').trim().charAt(0) || 'A');
+
+const handleLogout = async () => {
+  await authStore.logout();
+  cartStore.$reset();
+  router.push('/admin/login');
+};
 
 const navigation = [
   { path: '/admin/dashboard', icon: 'view-dashboard', label: 'Dashboard' },
   { path: '/admin/orders', icon: 'package-variant', label: 'Orders', badge: '12', badgeVariant: 'danger' },
+  { path: '/admin/orders/create', icon: 'cart-plus', label: 'Create Order' },
   { path: '/admin/products', icon: 'tag-multiple', label: 'Products' },
   { path: '/admin/categories', icon: 'shape', label: 'Categories' },
   { path: '/admin/vendors', icon: 'store', label: 'Vendors', badge: '3', badgeVariant: 'warning' },
-  { path: '/admin/customers', icon: 'account-group', label: 'Customers' },
   { path: '/admin/zones', icon: 'map-marker-radius', label: 'Shipping Zones' },
   { path: '/admin/delivery-partners', icon: 'bike-fast', label: 'Delivery Partners' },
+  { path: '/admin/dispatch-time-slots', icon: 'clock-outline', label: 'Dispatch Slots' },
+  { path: '/admin/operation-cities', icon: 'city', label: 'Operation Cities' },
+  { path: '/admin/operation-areas', icon: 'map-marker', label: 'Operation Areas' },
+  { path: '/admin/inventory', icon: 'archive-plus', label: 'Inventory' },
+  { path: '/admin/inventory-ledger', icon: 'clipboard-list-outline', label: 'Inventory Ledger' },
+  { path: '/admin/expiry-alerts', icon: 'calendar-alert', label: 'Expiry Alerts' },
+  { path: '/admin/profit-margins', icon: 'chart-box-outline', label: 'Profit Margins' },
   { path: '/admin/analytics', icon: 'chart-line', label: 'Analytics' },
   { path: '/admin/payment-gateways', icon: 'credit-card-cog', label: 'Payment Gateways' },
-  { path: '/admin/reviews', icon: 'star', label: 'Reviews' },
-  { path: '/admin/coupons', icon: 'ticket-percent', label: 'Coupons' },
   { path: '/admin/settings', icon: 'cog-outline', label: 'Settings' },
 ];
 </script>

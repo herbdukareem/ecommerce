@@ -22,6 +22,9 @@
             <p><strong>Status:</strong> {{ order.status }}</p>
             <p><strong>Payment:</strong> {{ order.payment_status }}</p>
             <p><strong>Delivery Status:</strong> {{ order.delivery_status || 'pending_assignment' }}</p>
+            <p><strong>City:</strong> {{ order.city_name || order.city?.name || 'N/A' }}</p>
+            <p><strong>Area:</strong> {{ order.area_name || order.area?.name || 'N/A' }}</p>
+            <p><strong>Dispatch Slot:</strong> {{ order.dispatch_time_label || order.dispatchTimeSlot?.label || 'N/A' }}</p>
             <p><strong>Delivery Fee:</strong> {{ formatCurrency(order.delivery_fee || order.shipping_cost || 0) }}</p>
             <p><strong>Tracking:</strong> {{ order.delivery_tracking_code || 'N/A' }}</p>
           </div>

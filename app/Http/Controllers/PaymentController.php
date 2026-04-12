@@ -40,12 +40,54 @@ class PaymentController extends Controller
             return response()->json(['message' => 'Payment already completed'], 422);
         }
 
-        $payload = $this->paymentService->initialize($order, $payment);
+        try {
+            $payload = $this->paymentService->initialize($order, $payment);
+        } catch (\RuntimeException $exception) {
+            return response()->json([
+                'message' => $exception->getMessage() ?: 'Unable to initialize payment right now.',
+            ], 422);
+        }
+
+        $provider = (string) ($payload['provider'] ?? data_get($payment->gateway_response, 'provider', 'dummy'));
+        $gateway = $provider !== 'dummy'
+            ? \App\Models\PaymentGateway::query()->where('provider', $provider)->first()
+            : null;
+        $mode = $gateway?->mode ?? 'sandbox';
+        $runtime = $provider !== 'dummy' ? $this->gatewayManager->providerRuntimeConfig($provider, $mode) : [];
+
+        $flow = $provider === 'paystack' ? 'popup' : 'redirect';
+
+        $checkoutPayload = [
+            'provider' => $provider,
+            'reference' => $payload['reference'] ?? $payment->transaction_id,
+            'checkout_url' => $payload['checkout_url'] ?? null,
+            'access_code' => $payload['access_code'] ?? null,
+        ];
+
+        if ($provider === 'paystack') {
+            $checkoutPayload = array_merge($checkoutPayload, [
+                'public_key' => $runtime['public_key'] ?? null,
+                'email' => $order->user?->email,
+                'amount' => (int) round(((float) $payment->amount) * 100),
+                'currency' => 'NGN',
+                'metadata' => [
+                    'order_id' => $order->id,
+                    'payment_id' => $payment->id,
+                    'customer_id' => $order->user_id,
+                ],
+                'channels' => ['card', 'bank', 'ussd', 'qr', 'mobile_money', 'bank_transfer'],
+            ]);
+        }
 
         return response()->json([
             'message' => 'Payment initialized',
+            'success' => true,
+            'provider' => $provider,
+            'payment_flow' => $flow,
+            'order_id' => $order->id,
+            'payment_id' => $payment->id,
             'payment' => $payment->fresh(),
-            'checkout' => $payload,
+            'checkout' => $checkoutPayload,
         ]);
     }
 

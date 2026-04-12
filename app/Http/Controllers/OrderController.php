@@ -22,7 +22,7 @@ class OrderController extends Controller
     {
         $user = $request->user();
 
-        $query = Order::with(['items.sku.product', 'shippingAddress', 'payments', 'deliveryPartner', 'shippingMethod', 'shippingZone'])
+        $query = Order::with(['items.sku.product.images', 'shippingAddress', 'payments', 'deliveryPartner', 'shippingMethod', 'shippingZone', 'city', 'area', 'dispatchTimeSlot'])
             ->where('user_id', $user->id);
 
         if ($request->filled('status')) {
@@ -53,6 +53,9 @@ class OrderController extends Controller
             'deliveryPartner',
             'shippingMethod',
             'shippingZone',
+            'city',
+            'area',
+            'dispatchTimeSlot',
         ])
         ->where('user_id', $user->id)
         ->findOrFail($id);

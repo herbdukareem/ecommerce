@@ -60,4 +60,14 @@ class Sku extends Model
     {
         return $this->hasMany(Stock::class);
     }
+
+    public function inventoryBatches()
+    {
+        return $this->hasMany(InventoryBatch::class, 'variant_id');
+    }
+
+    public function inventoryLedgerEntries()
+    {
+        return $this->hasMany(InventoryLedgerEntry::class, 'variant_id');
+    }
 }

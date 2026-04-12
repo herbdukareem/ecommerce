@@ -62,6 +62,16 @@ class Product extends Model
         return $this->hasMany(Review::class);
     }
 
+    public function inventoryBatches()
+    {
+        return $this->hasMany(InventoryBatch::class);
+    }
+
+    public function inventoryLedgerEntries()
+    {
+        return $this->hasMany(InventoryLedgerEntry::class);
+    }
+
     /**
      * Get average rating for this product.
      */

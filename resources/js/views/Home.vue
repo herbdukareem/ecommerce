@@ -193,6 +193,7 @@ import { useCartStore } from '../stores/cart';
 import { useSettingsStore } from '../stores/settings';
 import { useAuthStore } from '../stores/auth';
 import { resolveProductPurchase } from '../utils/productPurchase';
+import { normalizeProductMedia } from '../utils/productMedia';
 
 const cartStore = useCartStore();
 const settingsStore = useSettingsStore();
@@ -209,6 +210,15 @@ const formatCurrency = settingsStore.formatCurrency;
 const isAuthenticated = computed(() => authStore.isAuthenticated);
 const isProductOutOfStock = (product) => resolveProductPurchase(product).outOfStock;
 
+const normalizeFeaturedProduct = (product) => {
+  const media = normalizeProductMedia(product);
+  return {
+    ...product,
+    primary_image_url: media.primaryImage,
+    image_placeholder: media.placeholder,
+  };
+};
+
 const loadHomeData = async () => {
   loading.value = true;
   loadError.value = '';
@@ -217,7 +227,7 @@ const loadHomeData = async () => {
       axios.get('/api/products', { params: { per_page: 4, sort: 'newest' } }),
       axios.get('/api/categories'),
     ]);
-    featuredProducts.value = productsRes.data?.data || [];
+    featuredProducts.value = (productsRes.data?.data || []).map(normalizeFeaturedProduct);
     categories.value = categoriesRes.data || [];
   } catch (error) {
     loadError.value = error.response?.data?.message || 'Failed to load homepage data.';
@@ -256,7 +266,9 @@ const addToCart = async (product) => {
 
 const onImageError = (event, fallback) => {
   if (!event?.target) return;
-  event.target.src = fallback;
+  if (event.target.src !== fallback) {
+    event.target.src = fallback;
+  }
 };
 
 onMounted(loadHomeData);

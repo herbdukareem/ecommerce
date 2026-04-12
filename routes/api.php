@@ -30,6 +30,9 @@ Route::get('/locations/countries', [App\Http\Controllers\LocationController::cla
 Route::get('/locations/states', [App\Http\Controllers\LocationController::class, 'states']);
 Route::get('/locations/cities', [App\Http\Controllers\LocationController::class, 'cities']);
 Route::get('/locations/autocomplete', [App\Http\Controllers\LocationController::class, 'autocomplete']);
+Route::get('/checkout/cities', [App\Http\Controllers\CheckoutController::class, 'operationalCities']);
+Route::get('/checkout/areas', [App\Http\Controllers\CheckoutController::class, 'operationalAreas']);
+Route::get('/checkout/dispatch-time-slots', [App\Http\Controllers\CheckoutController::class, 'dispatchTimeSlots']);
 
 // Public catalog routes (no auth required)
 Route::get('/products', [App\Http\Controllers\CatalogController::class, 'index']);
@@ -122,6 +125,10 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::put('/products/{id}', [App\Http\Controllers\Admin\ProductController::class, 'update']);
         Route::delete('/products/{id}', [App\Http\Controllers\Admin\ProductController::class, 'destroy']);
         Route::post('/products/bulk-update', [App\Http\Controllers\Admin\ProductController::class, 'bulkUpdate']);
+        Route::post('/products/{id}/images', [App\Http\Controllers\Admin\ProductController::class, 'uploadImages'])->middleware('can:product-image.manage');
+        Route::put('/products/{id}/images/order', [App\Http\Controllers\Admin\ProductController::class, 'reorderImages'])->middleware('can:product-image.manage');
+        Route::put('/products/{id}/images/{imageId}/primary', [App\Http\Controllers\Admin\ProductController::class, 'setPrimaryImage'])->middleware('can:product-image.manage');
+        Route::delete('/products/{id}/images/{imageId}', [App\Http\Controllers\Admin\ProductController::class, 'deleteImage'])->middleware('can:product-image.manage');
 
         // Vendor Management
         Route::get('/vendors', [App\Http\Controllers\Admin\VendorController::class, 'index']);
@@ -166,8 +173,11 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
         // Order Management
         Route::get('/orders', [App\Http\Controllers\Admin\OrderController::class, 'index']);
+        Route::post('/orders', [App\Http\Controllers\Admin\AdminOrderCreationController::class, 'store'])->middleware('can:admin-order.create');
         Route::get('/orders/statistics', [App\Http\Controllers\Admin\OrderController::class, 'statistics']);
         Route::get('/orders/export', [App\Http\Controllers\Admin\OrderController::class, 'export']);
+        Route::get('/orders/customers', [App\Http\Controllers\Admin\AdminOrderCreationController::class, 'customers'])->middleware('can:admin-order.create');
+        Route::get('/orders/products', [App\Http\Controllers\Admin\AdminOrderCreationController::class, 'products'])->middleware('can:admin-order.create');
         Route::get('/orders/{id}', [App\Http\Controllers\Admin\OrderController::class, 'show']);
         Route::put('/orders/{id}/status', [App\Http\Controllers\Admin\OrderController::class, 'updateStatus']);
         Route::put('/orders/{id}/payment-status', [App\Http\Controllers\Admin\OrderController::class, 'updatePaymentStatus']);
@@ -179,6 +189,33 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::post('/delivery-partners', [App\Http\Controllers\Admin\DeliveryPartnerController::class, 'store']);
         Route::put('/delivery-partners/{id}', [App\Http\Controllers\Admin\DeliveryPartnerController::class, 'update']);
         Route::patch('/delivery-partners/{id}/status', [App\Http\Controllers\Admin\DeliveryPartnerController::class, 'updateStatus']);
+
+        // Dispatch time slots
+        Route::get('/dispatch-time-slots', [App\Http\Controllers\Admin\DispatchTimeSlotController::class, 'index'])->middleware('can:dispatch-time.view');
+        Route::post('/dispatch-time-slots', [App\Http\Controllers\Admin\DispatchTimeSlotController::class, 'store'])->middleware('can:dispatch-time.create');
+        Route::put('/dispatch-time-slots/{id}', [App\Http\Controllers\Admin\DispatchTimeSlotController::class, 'update'])->middleware('can:dispatch-time.update');
+        Route::delete('/dispatch-time-slots/{id}', [App\Http\Controllers\Admin\DispatchTimeSlotController::class, 'destroy'])->middleware('can:dispatch-time.delete');
+
+        // Cities of operation
+        Route::get('/operation-cities', [App\Http\Controllers\Admin\OperationCityController::class, 'index'])->middleware('can:city.view');
+        Route::post('/operation-cities', [App\Http\Controllers\Admin\OperationCityController::class, 'store'])->middleware('can:city.create');
+        Route::put('/operation-cities/{id}', [App\Http\Controllers\Admin\OperationCityController::class, 'update'])->middleware('can:city.update');
+        Route::delete('/operation-cities/{id}', [App\Http\Controllers\Admin\OperationCityController::class, 'destroy'])->middleware('can:city.delete');
+
+        // Areas of operation
+        Route::get('/operation-areas', [App\Http\Controllers\Admin\OperationAreaController::class, 'index'])->middleware('can:area.view');
+        Route::post('/operation-areas', [App\Http\Controllers\Admin\OperationAreaController::class, 'store'])->middleware('can:area.create');
+        Route::put('/operation-areas/{id}', [App\Http\Controllers\Admin\OperationAreaController::class, 'update'])->middleware('can:area.update');
+        Route::delete('/operation-areas/{id}', [App\Http\Controllers\Admin\OperationAreaController::class, 'destroy'])->middleware('can:area.delete');
+
+        // Inventory and reporting
+        Route::get('/inventory/skus', [App\Http\Controllers\Admin\InventoryController::class, 'stockSkus'])->middleware('can:inventory.view');
+        Route::get('/inventory/batches', [App\Http\Controllers\Admin\InventoryController::class, 'index'])->middleware('can:inventory.view');
+        Route::post('/inventory/add-stock', [App\Http\Controllers\Admin\InventoryController::class, 'addStock'])->middleware('can:inventory.add-stock');
+        Route::get('/inventory/ledger', [App\Http\Controllers\Admin\InventoryController::class, 'ledger'])->middleware('can:inventory.ledger.view');
+        Route::get('/inventory/expiry-alerts', [App\Http\Controllers\Admin\InventoryController::class, 'expiryAlerts'])->middleware('can:inventory.expiry.manage');
+        Route::put('/inventory/batches/{batchId}/expiry', [App\Http\Controllers\Admin\InventoryController::class, 'updateBatchExpiry'])->middleware('can:inventory.expiry.manage');
+        Route::get('/reports/profit-margins', [App\Http\Controllers\Admin\InventoryController::class, 'profitMargins'])->middleware('can:profit-report.view');
 
         // Review Moderation
         Route::get('/reviews', [App\Http\Controllers\ReviewController::class, 'adminIndex']);

@@ -26,6 +26,7 @@ class DatabaseSeeder extends Seeder
         // Seed permission matrix first so role records are present before user assignment.
         $this->call(PermissionsSeeder::class);
         $this->call(LocationSeeder::class);
+        $this->call(DispatchAndOperationsSeeder::class);
 
         // Create roles
         $adminRole = Role::firstOrCreate(['name' => 'Admin', 'guard_name' => 'sanctum']);

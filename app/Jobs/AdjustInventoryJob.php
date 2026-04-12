@@ -38,7 +38,9 @@ class AdjustInventoryJob implements ShouldQueue
         }
 
         if ($this->action === 'commit') {
-            $inventoryService->commit($items);
+            if ($inventoryService->commit($items)) {
+                $inventoryService->commitOrderInventory($order, $order->createdByAdmin);
+            }
         }
     }
 }

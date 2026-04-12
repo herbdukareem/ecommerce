@@ -10,13 +10,26 @@ class Order extends Model
     use HasFactory;
 
     protected $fillable = [
+        'created_by_admin_id',
         'user_id',
         'shipping_address_id',
+        'city_id',
+        'area_id',
+        'dispatch_time_slot_id',
         'delivery_partner_id',
         'shipping_zone_id',
         'shipping_method_id',
+        'city_name',
+        'area_name',
+        'dispatch_time_label',
+        'dispatch_start_time',
+        'dispatch_end_time',
         'status',
         'payment_status',
+        'payment_mode',
+        'payment_reference',
+        'order_note',
+        'internal_note',
         'delivery_status',
         'subtotal',
         'shipping_cost',
@@ -64,6 +77,11 @@ class Order extends Model
         return $this->belongsTo(User::class);
     }
 
+    public function createdByAdmin()
+    {
+        return $this->belongsTo(User::class, 'created_by_admin_id');
+    }
+
     public function items()
     {
         return $this->hasMany(OrderItem::class);
@@ -77,6 +95,21 @@ class Order extends Model
     public function shippingAddress()
     {
         return $this->belongsTo(Address::class, 'shipping_address_id');
+    }
+
+    public function city()
+    {
+        return $this->belongsTo(OperationCity::class, 'city_id');
+    }
+
+    public function area()
+    {
+        return $this->belongsTo(OperationArea::class, 'area_id');
+    }
+
+    public function dispatchTimeSlot()
+    {
+        return $this->belongsTo(DispatchTimeSlot::class, 'dispatch_time_slot_id');
     }
 
     public function payments()

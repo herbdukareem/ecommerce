@@ -3,56 +3,48 @@ import axios from 'axios';
 
 export const useCheckoutStore = defineStore('checkout', {
   state: () => ({
-    quotes: [],
+    cities: [],
+    areas: [],
+    dispatchSlots: [],
     gateways: [],
-    selectedShipping: null,
     loading: false,
-    currentStep: 1, // 1: Address, 2: Shipping, 3: Payment, 4: Review
   }),
 
-  getters: {
-    selectedQuote: (state) => {
-      if (!state.selectedShipping) return null;
-      return state.quotes.find(q => q.method === state.selectedShipping);
-    },
-  },
-
   actions: {
-    async quoteShipping(payload = {}) {
+    async fetchCities() {
       try {
         this.loading = true;
-        const body = payload.address_id
-          ? { address_id: payload.address_id }
-          : { destination: payload.destination || {} };
-
-        const { data } = await axios.post('/api/checkout/quote-shipping', body);
-        this.quotes = data.quotes || [];
+        const { data } = await axios.get('/api/checkout/cities');
+        this.cities = data.cities || [];
         return { success: true };
       } catch (error) {
-        console.error('Failed to get shipping quotes:', error);
-        const serverErrors = error.response?.data?.errors;
-        const validationMessage = serverErrors
-          ? Object.values(serverErrors).flat().join(' ')
-          : null;
-        return { success: false, error: validationMessage || error.response?.data?.message };
+        return { success: false, error: error.response?.data?.message || 'Failed to load cities.' };
       } finally {
         this.loading = false;
       }
     },
 
-    async placeOrder(addressId, paymentMethod, shippingMethod) {
+    async fetchAreas(cityId) {
       try {
         this.loading = true;
-        const { data } = await axios.post('/api/checkout/place-order', {
-          address_id: addressId,
-          payment_provider: paymentMethod,
-          payment_method: 'card',
-          shipping_method: shippingMethod,
-        });
-        return { success: true, order: data.order };
+        const { data } = await axios.get('/api/checkout/areas', { params: { city_id: cityId } });
+        this.areas = data.areas || [];
+        return { success: true };
       } catch (error) {
-        console.error('Failed to place order:', error);
-        return { success: false, error: error.response?.data?.message };
+        return { success: false, error: error.response?.data?.message || 'Failed to load areas.' };
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async fetchDispatchTimeSlots() {
+      try {
+        this.loading = true;
+        const { data } = await axios.get('/api/checkout/dispatch-time-slots');
+        this.dispatchSlots = data.dispatch_time_slots || [];
+        return { success: true };
+      } catch (error) {
+        return { success: false, error: error.response?.data?.message || 'Failed to load dispatch slots.' };
       } finally {
         this.loading = false;
       }
@@ -64,36 +56,49 @@ export const useCheckoutStore = defineStore('checkout', {
         this.gateways = data.gateways || [];
         return { success: true, gateways: this.gateways };
       } catch (error) {
-        console.error('Failed to load payment gateways:', error);
-        return { success: false, error: error.response?.data?.message };
+        return { success: false, error: error.response?.data?.message || 'Failed to load payment gateways.' };
       }
     },
 
-    selectShipping(method) {
-      this.selectedShipping = method;
-    },
-
-    setStep(step) {
-      this.currentStep = step;
-    },
-
-    nextStep() {
-      if (this.currentStep < 4) {
-        this.currentStep++;
+    async placeOrder(payload) {
+      try {
+        this.loading = true;
+        const { data } = await axios.post('/api/checkout/place-order', payload);
+        return { success: true, order: data.order };
+      } catch (error) {
+        const errors = error.response?.data?.errors;
+        const validationMessage = errors ? Object.values(errors).flat().join(' ') : null;
+        return { success: false, error: validationMessage || error.response?.data?.message || 'Unable to place order.' };
+      } finally {
+        this.loading = false;
       }
     },
 
-    previousStep() {
-      if (this.currentStep > 1) {
-        this.currentStep--;
+    async initializeOrderPayment(orderId) {
+      try {
+        this.loading = true;
+        const { data } = await axios.post(`/api/payments/orders/${orderId}/initialize`);
+        return { success: true, data };
+      } catch (error) {
+        return { success: false, error: error.response?.data?.message || 'Unable to initialize payment.' };
+      } finally {
+        this.loading = false;
       }
     },
 
-    reset() {
-      this.quotes = [];
-      this.gateways = [];
-      this.selectedShipping = null;
-      this.currentStep = 1;
+    async verifyPayment(paymentId, payload) {
+      try {
+        this.loading = true;
+        const { data } = await axios.post(`/api/payments/${paymentId}/verify`, payload);
+        return { success: true, data };
+      } catch (error) {
+        return {
+          success: false,
+          error: error.response?.data?.message || 'Unable to verify payment.',
+        };
+      } finally {
+        this.loading = false;
+      }
     },
   },
 });

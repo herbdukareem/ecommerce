@@ -10,7 +10,7 @@ class OrderItem extends Model
     use HasFactory;
     public $timestamps = false;
     protected $fillable = [
-        'order_id', 'sku_id', 'quantity', 'price_snapshot', 'weight_snapshot', 'length_snapshot', 'width_snapshot', 'height_snapshot',
+        'order_id', 'sku_id', 'quantity', 'price_snapshot', 'unit_cost_at_sale', 'total_cost_at_sale', 'unit_price_at_sale', 'total_price_at_sale', 'weight_snapshot', 'length_snapshot', 'width_snapshot', 'height_snapshot',
     ];
 
     public function order()
@@ -21,5 +21,10 @@ class OrderItem extends Model
     public function sku()
     {
         return $this->belongsTo(Sku::class);
+    }
+
+    public function inventoryAllocations()
+    {
+        return $this->hasMany(OrderItemInventoryAllocation::class);
     }
 }

@@ -67,4 +67,23 @@ class CheckoutTest extends TestCase
             'shipping_method' => 'standard',
         ])->assertStatus(422);
     }
+
+    public function test_checkout_requires_payment_gateway_selection(): void
+    {
+        $customer = $this->makeUserWithRole('Customer', 'customer-checkout-missing-provider@test.com');
+        $vendor = $this->makeUserWithRole('Vendor', 'vendor-checkout-missing-provider@test.com');
+        $commerce = $this->makeProductWithStock($vendor);
+        $address = $this->makeAddress($customer);
+        Mail::fake();
+
+        Sanctum::actingAs($customer);
+
+        $this->postJson('/api/cart/items', ['sku_id' => $commerce['sku']->id, 'quantity' => 1])->assertCreated();
+
+        $this->postJson('/api/checkout/place-order', [
+            'address_id' => $address->id,
+            'payment_method' => 'card',
+            'shipping_method' => 'standard',
+        ])->assertStatus(422)->assertJsonValidationErrors(['payment_provider']);
+    }
 }

@@ -34,8 +34,13 @@
           >
             <div class="flex gap-4">
               <!-- Product Image -->
-              <div class="w-24 h-24 flex-shrink-0 bg-gradient-to-br from-primary/10 to-primary-dark/10 rounded-lg flex items-center justify-center">
-                <i class="mdi mdi-image text-3xl text-primary/30"></i>
+              <div class="w-24 h-24 flex-shrink-0 bg-gradient-to-br from-primary/10 to-primary-dark/10 rounded-lg flex items-center justify-center overflow-hidden">
+                <img
+                  :src="item.product_image || '/images/placeholders/product-placeholder.svg'"
+                  :alt="item.product_title"
+                  class="w-full h-full object-cover"
+                  @error="onImageError"
+                />
               </div>
 
               <!-- Product Info -->
@@ -155,7 +160,7 @@
                 icon="lock"
                 class="w-full"
                 @click="proceedToCheckout"
-                :loading="loading"
+                :loading="cartStore.loading"
               >
                 Proceed to Checkout
               </Button>
@@ -178,7 +183,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, inject } from 'vue';
+import { computed, ref, onMounted, inject } from 'vue';
 import { useRouter } from 'vue-router';
 import axios from 'axios';
 import MainLayout from '../components/layout/MainLayout.vue';
@@ -187,38 +192,33 @@ import Button from '../components/ui/Button.vue';
 import Input from '../components/ui/Input.vue';
 import Badge from '../components/ui/Badge.vue';
 import { useSettingsStore } from '../stores/settings';
+import { useCartStore } from '../stores/cart';
 
 const router = useRouter();
 const toast = inject('toast');
 const settingsStore = useSettingsStore();
+const cartStore = useCartStore();
 const { formatCurrency } = settingsStore;
 
-const cartItems = ref([]);
-const loading = ref(false);
+const cartItems = computed(() => cartStore.items || []);
 const couponCode = ref('');
 const couponError = ref('');
 const couponSuccess = ref('');
 const applyingCoupon = ref(false);
 const appliedCoupon = ref(null);
-const subtotal = ref(0);
-const discount = ref(0);
-const total = ref(0);
+const subtotal = computed(() => {
+  return cartItems.value.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
+});
+const discount = computed(() => Math.max(0, subtotal.value - Number(cartStore.total || 0)));
+const total = computed(() => Number(cartStore.total || 0));
 
 // Methods
 const fetchCart = async () => {
   try {
-    loading.value = true;
-    const response = await axios.get('/api/cart');
-    cartItems.value = response.data.items || [];
-    subtotal.value = Number(response.data.subtotal || 0);
-    discount.value = Number(response.data.discount || 0);
-    total.value = Number(response.data.total || 0);
-    appliedCoupon.value = response.data.coupon || null;
+    await cartStore.loadCart();
   } catch (error) {
     console.error('Error fetching cart:', error);
     toast?.error('Failed to load cart');
-  } finally {
-    loading.value = false;
   }
 };
 
@@ -226,8 +226,11 @@ const updateQuantity = async (itemId, newQuantity) => {
   if (newQuantity < 1) return;
 
   try {
-    await axios.put(`/api/cart/items/${itemId}`, { quantity: newQuantity });
-    await fetchCart();
+    const result = await cartStore.updateItem(itemId, newQuantity);
+    if (!result.success) {
+      toast?.error(result.error || 'Failed to update quantity');
+      return;
+    }
     toast?.success('Cart updated');
   } catch (error) {
     console.error('Error updating quantity:', error);
@@ -237,8 +240,11 @@ const updateQuantity = async (itemId, newQuantity) => {
 
 const removeItem = async (itemId) => {
   try {
-    await axios.delete(`/api/cart/items/${itemId}`);
-    await fetchCart();
+    const result = await cartStore.removeItem(itemId);
+    if (!result.success) {
+      toast?.error(result.error || 'Failed to remove item');
+      return;
+    }
     toast?.success('Item removed from cart');
   } catch (error) {
     console.error('Error removing item:', error);
@@ -280,4 +286,10 @@ const proceedToCheckout = () => {
 onMounted(() => {
   fetchCart();
 });
+
+const onImageError = (event) => {
+  if (event?.target) {
+    event.target.src = '/images/placeholders/product-placeholder.svg';
+  }
+};
 </script>
