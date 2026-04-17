@@ -90,13 +90,15 @@ jobs:
           ssh-keyscan -p "$CPANEL_PORT" -H "$CPANEL_HOST" >> ~/.ssh/known_hosts 2>/dev/null
           chmod 644 ~/.ssh/known_hosts
 
-      - name: Upload app files to cPanel via rsync over SSH
+      - name: Upload app files to cPanel via tar over SSH
         run: |
           set -euo pipefail
-          rsync -rlgoDzvc -i --omit-dir-times --no-perms \
-            --exclude-from=.github/deploy/rsync-excludes.txt \
-            -e "ssh -p $CPANEL_PORT -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes" \
-            ./ "$CPANEL_USERNAME@$CPANEL_HOST:${{ env.DEPLOY_PATH }}"
+          # cPanel shells may print startup banners that break rsync protocol negotiation.
+          # Use tar stream over SSH to deploy files reliably in shared-hosting environments.
+          tar --exclude-from=.github/deploy/rsync-excludes.txt -czf - . | \
+            ssh -p "$CPANEL_PORT" -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
+              "$CPANEL_USERNAME@$CPANEL_HOST" \
+              "mkdir -p '${{ env.DEPLOY_PATH }}' && tar -xzf - -C '${{ env.DEPLOY_PATH }}'"
 
       - name: Run post-deploy Laravel commands on server
         run: |
