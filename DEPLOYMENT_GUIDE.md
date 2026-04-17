@@ -74,3 +74,22 @@ Gateway validation smoke checks:
 curl https://your-domain/api/payments/gateways
 php artisan route:list --path=payments/webhook
 ```
+
+## 7. GitHub Actions to cPanel
+This repository includes `.github/workflows/deploy-cpanel.yml` for production deploys on push to `main` (or manual trigger).
+
+Required GitHub repository secrets:
+- `CPANEL_HOST` (example: `emerald5.doveserver.com`)
+- `CPANEL_USERNAME` (example: `rhocomng`)
+- `CPANEL_SSH_PRIVATE_KEY` (private key for SSH deploy user)
+- `CPANEL_PORT` (optional, default `22`)
+
+Configured server paths:
+- Shared document root: `/home/rhocomng/public_html`
+- App deploy path: `/home/rhocomng/public_html/ecommerce.custechth.org`
+- Laravel document root: `/home/rhocomng/public_html/ecommerce.custechth.org/public`
+
+Notes:
+- Workflow uses `rsync` without `--delete` for safer shared-hosting behavior.
+- `.env` is excluded from deployment and must already exist on server.
+- Post-deploy commands run `composer install`, migrations, and Laravel caches.

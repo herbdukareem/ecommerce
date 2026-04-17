@@ -1,0 +1,94 @@
+name: Deploy to cPanel
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+concurrency:
+  group: cpanel-deploy-main
+  cancel-in-progress: false
+
+env:
+  # cPanel account paths (confirmed)
+  SHARED_DOCUMENT_ROOT: /home/rhocomng/public_html
+  DEPLOY_PATH: /home/rhocomng/public_html/ecommerce.custechth.org
+  DOCUMENT_ROOT: /home/rhocomng/public_html/ecommerce.custechth.org/public
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Build frontend assets
+        run: |
+          npm ci
+          npm run build
+
+      - name: Upload app files to cPanel via rsync over SSH
+        uses: easingthemes/ssh-deploy@main
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.CPANEL_SSH_PRIVATE_KEY }}
+          REMOTE_HOST: ${{ secrets.CPANEL_HOST }}
+          REMOTE_USER: ${{ secrets.CPANEL_USERNAME }}
+          REMOTE_PORT: ${{ secrets.CPANEL_PORT || '22' }}
+          SOURCE: "./"
+          TARGET: ${{ env.DEPLOY_PATH }}
+          # No --delete to avoid accidental removal in shared hosting.
+          ARGS: "-rlgoDzvc -i --omit-dir-times --no-perms --exclude-from=.github/deploy/rsync-excludes.txt"
+
+      - name: Run post-deploy Laravel commands on server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.CPANEL_HOST }}
+          username: ${{ secrets.CPANEL_USERNAME }}
+          key: ${{ secrets.CPANEL_SSH_PRIVATE_KEY }}
+          port: ${{ secrets.CPANEL_PORT || '22' }}
+          script_stop: true
+          script: |
+            set -e
+
+            SHARED_ROOT="${{ env.SHARED_DOCUMENT_ROOT }}"
+            APP_PATH="${{ env.DEPLOY_PATH }}"
+            DOC_ROOT="${{ env.DOCUMENT_ROOT }}"
+
+            case "$APP_PATH" in
+              "$SHARED_ROOT"/*) ;;
+              *) echo "Refusing deploy: APP_PATH is outside shared document root."; exit 1;;
+            esac
+
+            case "$DOC_ROOT" in
+              "$SHARED_ROOT"/*) ;;
+              *) echo "Refusing deploy: DOCUMENT_ROOT is outside shared document root."; exit 1;;
+            esac
+
+            [ -d "$APP_PATH" ] || { echo "Deploy path missing: $APP_PATH"; exit 1; }
+            [ -d "$DOC_ROOT" ] || { echo "Document root missing: $DOC_ROOT"; exit 1; }
+
+            cd "$APP_PATH"
+
+            if [ ! -f artisan ]; then
+              echo "artisan not found in deploy path"
+              exit 1
+            fi
+
+            composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
+
+            php artisan migrate --force
+            php artisan optimize:clear
+            php artisan config:cache
+            php artisan route:cache
+            php artisan view:cache
+
+            php artisan storage:link || true
+
+            echo "Deployment complete for $APP_PATH"
