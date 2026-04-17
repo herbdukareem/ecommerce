@@ -27,11 +27,16 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: npm
+          # Keep deploy workflow robust even if lockfile is missing on a branch.
+          # (CI workflow should remain strict.)
 
-      - name: Build frontend assets
+      - name: Install and build frontend assets
         run: |
-          npm ci
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
           npm run build
 
       - name: Upload app files to cPanel via rsync over SSH
