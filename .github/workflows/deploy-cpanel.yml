@@ -61,7 +61,9 @@ jobs:
           set -euo pipefail
           composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
 
-      - name: Deploy to cPanel via FTP/FTPS
+      - name: Deploy to cPanel via FTPS
+        id: deploy_ftps
+        continue-on-error: true
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ env.CPANEL_FTP_HOST }}
@@ -86,6 +88,42 @@ jobs:
             **/phpunit.xml
             **/*.md
             **/.DS_Store
+
+      - name: Deploy to cPanel via FTP (fallback)
+        id: deploy_ftp
+        if: steps.deploy_ftps.outcome == 'failure'
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ env.CPANEL_FTP_HOST }}
+          username: ${{ env.CPANEL_FTP_USERNAME }}
+          password: ${{ env.CPANEL_FTP_PASSWORD }}
+          port: ${{ env.CPANEL_FTP_PORT }}
+          protocol: ftp
+          local-dir: ./
+          server-dir: ${{ env.FTP_TARGET_DIR }}
+          dangerous-clean-slate: false
+          exclude: |
+            **/.git/**
+            **/.github/**
+            **/node_modules/**
+            **/tests/**
+            **/storage/logs/**
+            **/storage/framework/cache/**
+            **/storage/framework/sessions/**
+            **/storage/framework/views/**
+            **/.env
+            **/.env.*
+            **/phpunit.xml
+            **/*.md
+            **/.DS_Store
+
+      - name: Fail if both FTPS and FTP failed
+        if: steps.deploy_ftps.outcome == 'failure' && steps.deploy_ftp.outcome == 'failure'
+        run: |
+          echo "Both FTPS and FTP failed."
+          echo "Verify CPANEL_FTP_HOST, CPANEL_FTP_USERNAME, and CPANEL_FTP_PASSWORD."
+          echo "For cPanel, use the exact FTP account username format from cPanel FTP Accounts (often user@domain)."
+          exit 1
 
       - name: Deployment note
         run: |
