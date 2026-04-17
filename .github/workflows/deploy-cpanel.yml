@@ -18,6 +18,11 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      CPANEL_HOST: ${{ secrets.CPANEL_HOST }}
+      CPANEL_USERNAME: ${{ secrets.CPANEL_USERNAME }}
+      CPANEL_PORT: ${{ secrets.CPANEL_PORT || '22' }}
+      CPANEL_SSH_PRIVATE_KEY: ${{ secrets.CPANEL_SSH_PRIVATE_KEY }}
 
     steps:
       - name: Checkout
@@ -39,27 +44,46 @@ jobs:
           fi
           npm run build
 
+      - name: Prepare SSH key and known_hosts
+        run: |
+          set -euo pipefail
+
+          if [ -z "${CPANEL_HOST:-}" ] || [ -z "${CPANEL_USERNAME:-}" ]; then
+            echo "Missing CPANEL_HOST or CPANEL_USERNAME secret"
+            exit 1
+          fi
+
+          if [ -z "${CPANEL_SSH_PRIVATE_KEY:-}" ]; then
+            echo "Missing CPANEL_SSH_PRIVATE_KEY secret"
+            exit 1
+          fi
+
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          # Handle both multiline keys and one-line keys containing literal \n escapes.
+          printf "%b" "$CPANEL_SSH_PRIVATE_KEY" | sed 's/\r$//' > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          # Validate key early for clear diagnostics.
+          ssh-keygen -y -f ~/.ssh/deploy_key >/dev/null
+
+          ssh-keyscan -p "$CPANEL_PORT" -H "$CPANEL_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          chmod 644 ~/.ssh/known_hosts
+
       - name: Upload app files to cPanel via rsync over SSH
-        uses: easingthemes/ssh-deploy@main
-        env:
-          SSH_PRIVATE_KEY: ${{ secrets.CPANEL_SSH_PRIVATE_KEY }}
-          REMOTE_HOST: ${{ secrets.CPANEL_HOST }}
-          REMOTE_USER: ${{ secrets.CPANEL_USERNAME }}
-          REMOTE_PORT: ${{ secrets.CPANEL_PORT || '22' }}
-          SOURCE: "./"
-          TARGET: ${{ env.DEPLOY_PATH }}
-          # No --delete to avoid accidental removal in shared hosting.
-          ARGS: "-rlgoDzvc -i --omit-dir-times --no-perms --exclude-from=.github/deploy/rsync-excludes.txt"
+        run: |
+          set -euo pipefail
+          rsync -rlgoDzvc -i --omit-dir-times --no-perms \
+            --exclude-from=.github/deploy/rsync-excludes.txt \
+            -e "ssh -p $CPANEL_PORT -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes" \
+            ./ "$CPANEL_USERNAME@$CPANEL_HOST:${{ env.DEPLOY_PATH }}"
 
       - name: Run post-deploy Laravel commands on server
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.CPANEL_HOST }}
-          username: ${{ secrets.CPANEL_USERNAME }}
-          key: ${{ secrets.CPANEL_SSH_PRIVATE_KEY }}
-          port: ${{ secrets.CPANEL_PORT || '22' }}
-          script_stop: true
-          script: |
+        run: |
+          set -euo pipefail
+          ssh -p "$CPANEL_PORT" -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
+            "$CPANEL_USERNAME@$CPANEL_HOST" <<'EOF'
             set -e
 
             SHARED_ROOT="${{ env.SHARED_DOCUMENT_ROOT }}"
@@ -97,3 +121,4 @@ jobs:
             php artisan storage:link || true
 
             echo "Deployment complete for $APP_PATH"
+          EOF
