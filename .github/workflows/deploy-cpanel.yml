@@ -10,24 +10,35 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  # cPanel account paths (confirmed)
-  SHARED_DOCUMENT_ROOT: /home/rhocomng/public_html
-  DEPLOY_PATH: /home/rhocomng/public_html/ecommerce.custechth.org
-  DOCUMENT_ROOT: /home/rhocomng/public_html/ecommerce.custechth.org/public
+  # FTP path should be relative to FTP root on cPanel.
+  FTP_TARGET_DIR: /public_html/ecommerce.custechth.org/
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     env:
-      CPANEL_HOST: ${{ secrets.CPANEL_HOST }}
-      CPANEL_USERNAME: ${{ secrets.CPANEL_USERNAME }}
-      CPANEL_PORT: ${{ secrets.CPANEL_PORT || '22' }}
-      CPANEL_SSH_PRIVATE_KEY: ${{ secrets.CPANEL_SSH_PRIVATE_KEY }}
-      CPANEL_SSH_PRIVATE_KEY_B64: ${{ secrets.CPANEL_SSH_PRIVATE_KEY_B64 }}
+      CPANEL_FTP_HOST: ${{ secrets.CPANEL_FTP_HOST }}
+      CPANEL_FTP_USERNAME: ${{ secrets.CPANEL_FTP_USERNAME }}
+      CPANEL_FTP_PASSWORD: ${{ secrets.CPANEL_FTP_PASSWORD }}
+      CPANEL_FTP_PORT: ${{ secrets.CPANEL_FTP_PORT || '21' }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Validate FTP secrets
+        run: |
+          set -euo pipefail
+          if [ -z "${CPANEL_FTP_HOST:-}" ] || [ -z "${CPANEL_FTP_USERNAME:-}" ] || [ -z "${CPANEL_FTP_PASSWORD:-}" ]; then
+            echo "Missing FTP secrets. Required: CPANEL_FTP_HOST, CPANEL_FTP_USERNAME, CPANEL_FTP_PASSWORD"
+            exit 1
+          fi
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          tools: composer:v2
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -45,101 +56,38 @@ jobs:
           fi
           npm run build
 
-      - name: Prepare SSH key and known_hosts
+      - name: Install production PHP dependencies
         run: |
           set -euo pipefail
+          composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
 
-          if [ -z "${CPANEL_HOST:-}" ] || [ -z "${CPANEL_USERNAME:-}" ]; then
-            echo "Missing CPANEL_HOST or CPANEL_USERNAME secret"
-            exit 1
-          fi
+      - name: Deploy to cPanel via FTP/FTPS
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ env.CPANEL_FTP_HOST }}
+          username: ${{ env.CPANEL_FTP_USERNAME }}
+          password: ${{ env.CPANEL_FTP_PASSWORD }}
+          port: ${{ env.CPANEL_FTP_PORT }}
+          protocol: ftps
+          local-dir: ./
+          server-dir: ${{ env.FTP_TARGET_DIR }}
+          dangerous-clean-slate: false
+          exclude: |
+            **/.git/**
+            **/.github/**
+            **/node_modules/**
+            **/tests/**
+            **/storage/logs/**
+            **/storage/framework/cache/**
+            **/storage/framework/sessions/**
+            **/storage/framework/views/**
+            **/.env
+            **/.env.*
+            **/phpunit.xml
+            **/*.md
+            **/.DS_Store
 
-          if [ -z "${CPANEL_SSH_PRIVATE_KEY_B64:-}" ] && [ -z "${CPANEL_SSH_PRIVATE_KEY:-}" ]; then
-            echo "Missing SSH key secret: set CPANEL_SSH_PRIVATE_KEY_B64 or CPANEL_SSH_PRIVATE_KEY"
-            exit 1
-          fi
-
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-
-          # Prefer base64 secret when provided (avoids newline/escaping issues in GitHub secrets).
-          if [ -n "${CPANEL_SSH_PRIVATE_KEY_B64:-}" ]; then
-            CLEAN_B64="$(printf '%s' "$CPANEL_SSH_PRIVATE_KEY_B64" | tr -d '[:space:]')"
-
-            if printf '%s' "$CLEAN_B64" | base64 -d > ~/.ssh/deploy_key 2>/dev/null; then
-              tr -d '\r' < ~/.ssh/deploy_key > ~/.ssh/deploy_key.tmp && mv ~/.ssh/deploy_key.tmp ~/.ssh/deploy_key
-            elif printf '%s' "$CPANEL_SSH_PRIVATE_KEY_B64" | grep -q "BEGIN OPENSSH PRIVATE KEY\|BEGIN RSA PRIVATE KEY\|BEGIN EC PRIVATE KEY"; then
-              # If user accidentally stored a raw private key in the _B64 secret, accept it.
-              printf "%b" "$CPANEL_SSH_PRIVATE_KEY_B64" | tr -d '\r' > ~/.ssh/deploy_key
-            else
-              echo "CPANEL_SSH_PRIVATE_KEY_B64 is not valid base64. Recreate it from the private key file bytes."
-              exit 1
-            fi
-          else
-            # Supports multiline keys and one-line keys with literal \n escapes.
-            printf "%b" "$CPANEL_SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/deploy_key
-          fi
-
-          # Ensure file ends with newline; some parsers are strict about EOF newline.
-          printf '\n' >> ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-
-          # Validate key early for clear diagnostics.
-          ssh-keygen -y -f ~/.ssh/deploy_key >/dev/null
-
-          ssh-keyscan -p "$CPANEL_PORT" -H "$CPANEL_HOST" >> ~/.ssh/known_hosts 2>/dev/null
-          chmod 644 ~/.ssh/known_hosts
-
-      - name: Upload app files to cPanel via tar over SSH
+      - name: Deployment note
         run: |
-          set -euo pipefail
-          # cPanel shells may print startup banners that break rsync protocol negotiation.
-          # Use tar stream over SSH to deploy files reliably in shared-hosting environments.
-          tar --exclude-from=.github/deploy/rsync-excludes.txt -czf - . | \
-            ssh -p "$CPANEL_PORT" -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
-              "$CPANEL_USERNAME@$CPANEL_HOST" \
-              "mkdir -p '${{ env.DEPLOY_PATH }}' && tar -xzf - -C '${{ env.DEPLOY_PATH }}'"
-
-      - name: Run post-deploy Laravel commands on server
-        run: |
-          set -euo pipefail
-          ssh -p "$CPANEL_PORT" -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
-            "$CPANEL_USERNAME@$CPANEL_HOST" <<'EOF'
-            set -e
-
-            SHARED_ROOT="${{ env.SHARED_DOCUMENT_ROOT }}"
-            APP_PATH="${{ env.DEPLOY_PATH }}"
-            DOC_ROOT="${{ env.DOCUMENT_ROOT }}"
-
-            case "$APP_PATH" in
-              "$SHARED_ROOT"/*) ;;
-              *) echo "Refusing deploy: APP_PATH is outside shared document root."; exit 1;;
-            esac
-
-            case "$DOC_ROOT" in
-              "$SHARED_ROOT"/*) ;;
-              *) echo "Refusing deploy: DOCUMENT_ROOT is outside shared document root."; exit 1;;
-            esac
-
-            [ -d "$APP_PATH" ] || { echo "Deploy path missing: $APP_PATH"; exit 1; }
-            [ -d "$DOC_ROOT" ] || { echo "Document root missing: $DOC_ROOT"; exit 1; }
-
-            cd "$APP_PATH"
-
-            if [ ! -f artisan ]; then
-              echo "artisan not found in deploy path"
-              exit 1
-            fi
-
-            composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
-
-            php artisan migrate --force
-            php artisan optimize:clear
-            php artisan config:cache
-            php artisan route:cache
-            php artisan view:cache
-
-            php artisan storage:link || true
-
-            echo "Deployment complete for $APP_PATH"
-          EOF
+          echo "Deploy completed over FTP/FTPS."
+          echo "SSH is disabled on this cPanel account, so remote artisan/composer commands are skipped."
