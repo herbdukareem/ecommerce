@@ -1,10 +1,11 @@
 <template>
   <div
-    class="bg-white rounded-lg border border-gray-200 overflow-hidden transition-all duration-200"
+    class="bg-white rounded-lg border border-gray-200 transition-all duration-200"
     :class="[
       shadowClass,
       { 'hover:shadow-md hover:border-gray-300': hoverable },
       { 'cursor-pointer': clickable },
+      { 'overflow-hidden': !allowOverflow, 'overflow-visible': allowOverflow },
       animationClass
     ]"
     @click="handleClick"
@@ -57,6 +58,10 @@ const props = defineProps({
     default: false,
   },
   noPadding: {
+    type: Boolean,
+    default: false,
+  },
+  allowOverflow: {
     type: Boolean,
     default: false,
   },

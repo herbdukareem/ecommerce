@@ -434,6 +434,72 @@
                       </label>
                     </div>
                   </div>
+
+                  <div v-if="showEditModal && variant.id" class="mt-4 border-t border-gray-100 pt-4 space-y-3">
+                    <div class="flex items-center justify-between">
+                      <p class="text-xs font-semibold uppercase tracking-wide text-gray-600">Option Images</p>
+                      <label class="text-xs text-orange-600 hover:text-orange-700 cursor-pointer font-medium">
+                        Upload
+                        <input
+                          type="file"
+                          multiple
+                          accept="image/*"
+                          class="hidden"
+                          @change="handleVariantImageUpload(index, $event)"
+                        />
+                      </label>
+                    </div>
+
+                    <div v-if="variant.images?.length" class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      <div
+                        v-for="(image, imageIndex) in variant.images"
+                        :key="image.id"
+                        class="relative rounded-lg overflow-hidden border border-gray-200"
+                      >
+                        <img
+                          :src="image.image_url"
+                          :alt="image.alt_text || variant.label || `Variant image ${imageIndex + 1}`"
+                          class="h-20 w-full object-cover"
+                        />
+                        <div class="p-1 space-y-1 bg-white">
+                          <button
+                            type="button"
+                            class="w-full text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-gray-50"
+                            :class="image.is_primary ? 'bg-orange-50 border-orange-200 text-orange-700' : ''"
+                            @click="setVariantPrimaryImage(index, image.id)"
+                          >
+                            {{ image.is_primary ? 'Primary' : 'Set primary' }}
+                          </button>
+                          <div class="flex gap-1">
+                            <button
+                              type="button"
+                              class="flex-1 text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-gray-50 disabled:opacity-40"
+                              :disabled="imageIndex === 0"
+                              @click="moveVariantImage(index, imageIndex, -1)"
+                            >
+                              Up
+                            </button>
+                            <button
+                              type="button"
+                              class="flex-1 text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-gray-50 disabled:opacity-40"
+                              :disabled="imageIndex === variant.images.length - 1"
+                              @click="moveVariantImage(index, imageIndex, 1)"
+                            >
+                              Down
+                            </button>
+                          </div>
+                          <button
+                            type="button"
+                            class="w-full text-[11px] px-2 py-1 rounded border border-red-200 text-red-600 hover:bg-red-50"
+                            @click="deleteVariantImage(index, image.id)"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    <p v-else class="text-xs text-gray-500">No images uploaded for this option yet.</p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -505,6 +571,18 @@ const pagination = ref({
   from: 0,
   to: 0,
 });
+
+const sortVariantImages = (images = []) => {
+  return [...images].sort((a, b) => Number(a?.sort_order || 0) - Number(b?.sort_order || 0));
+};
+
+const syncVariantImages = (variantIndex, images) => {
+  if (!productForm.value.variants[variantIndex]) {
+    return;
+  }
+
+  productForm.value.variants[variantIndex].images = sortVariantImages(images);
+};
 
 // Fetch products from API
 const fetchProducts = async () => {
@@ -613,11 +691,96 @@ const addVariant = () => {
     weight: 0,
     sort_order: productForm.value.variants.length,
     is_active: true,
+    images: [],
   });
 };
 
 const removeVariant = (index) => {
   productForm.value.variants.splice(index, 1);
+};
+
+const handleVariantImageUpload = async (variantIndex, event) => {
+  const variant = productForm.value.variants[variantIndex];
+  const files = Array.from(event?.target?.files || []);
+  event.target.value = '';
+
+  if (!showEditModal.value || !productForm.value.id || !variant?.id || !files.length) {
+    return;
+  }
+
+  const formData = new FormData();
+  files.forEach((file, index) => {
+    formData.append(`images[${index}]`, file);
+  });
+
+  try {
+    const { data } = await axios.post(
+      `/api/admin/products/${productForm.value.id}/skus/${variant.id}/images`,
+      formData,
+      { headers: { 'Content-Type': 'multipart/form-data' } }
+    );
+    syncVariantImages(variantIndex, data.images || []);
+  } catch (error) {
+    console.error('Failed to upload variant images:', error);
+    alert(error.response?.data?.message || 'Failed to upload option images.');
+  }
+};
+
+const setVariantPrimaryImage = async (variantIndex, imageId) => {
+  const variant = productForm.value.variants[variantIndex];
+  if (!showEditModal.value || !productForm.value.id || !variant?.id || !imageId) {
+    return;
+  }
+
+  try {
+    const { data } = await axios.put(`/api/admin/products/${productForm.value.id}/skus/${variant.id}/images/${imageId}/primary`);
+    syncVariantImages(variantIndex, data.images || []);
+  } catch (error) {
+    console.error('Failed to set primary option image:', error);
+    alert(error.response?.data?.message || 'Failed to set primary option image.');
+  }
+};
+
+const deleteVariantImage = async (variantIndex, imageId) => {
+  const variant = productForm.value.variants[variantIndex];
+  if (!showEditModal.value || !productForm.value.id || !variant?.id || !imageId) {
+    return;
+  }
+
+  try {
+    const { data } = await axios.delete(`/api/admin/products/${productForm.value.id}/skus/${variant.id}/images/${imageId}`);
+    syncVariantImages(variantIndex, data.images || []);
+  } catch (error) {
+    console.error('Failed to delete option image:', error);
+    alert(error.response?.data?.message || 'Failed to delete option image.');
+  }
+};
+
+const moveVariantImage = async (variantIndex, imageIndex, direction) => {
+  const variant = productForm.value.variants[variantIndex];
+  if (!showEditModal.value || !productForm.value.id || !variant?.id) {
+    return;
+  }
+
+  const targetIndex = imageIndex + direction;
+  if (targetIndex < 0 || targetIndex >= (variant.images?.length || 0)) {
+    return;
+  }
+
+  const reordered = [...variant.images];
+  const [moved] = reordered.splice(imageIndex, 1);
+  reordered.splice(targetIndex, 0, moved);
+  syncVariantImages(variantIndex, reordered);
+
+  try {
+    const { data } = await axios.put(`/api/admin/products/${productForm.value.id}/skus/${variant.id}/images/order`, {
+      image_ids: reordered.map((image) => image.id),
+    });
+    syncVariantImages(variantIndex, data.images || reordered);
+  } catch (error) {
+    console.error('Failed to reorder option images:', error);
+    alert(error.response?.data?.message || 'Failed to reorder option images.');
+  }
 };
 
 // Save product
@@ -719,6 +882,7 @@ const editProduct = (product) => {
       weight: sku.weight || 0,
       sort_order: sku.sort_order || 0,
       is_active: sku.active !== false,
+      images: sortVariantImages(sku.images || []),
       existing: true
     })) : [],
   };

@@ -242,7 +242,7 @@ const stockHintText = computed(() => {
   return `${maxAvailableStock.value} available.`;
 });
 const galleryImages = computed(() => {
-  const media = normalizeProductMedia(product.value);
+  const media = normalizeProductMedia(product.value, { sku: selectedSku.value });
   return media.gallery.length ? media.gallery : [media.placeholder];
 });
 
@@ -270,14 +270,14 @@ async function fetchProduct(slug) {
 
 function onImageError(event) {
   if (!event?.target) return;
-  const media = normalizeProductMedia(product.value);
+  const media = normalizeProductMedia(product.value, { sku: selectedSku.value });
   event.target.src = media.placeholder;
   activeImage.value = media.placeholder;
 }
 
 function onThumbnailError(event) {
   if (!event?.target) return;
-  const media = normalizeProductMedia(product.value);
+  const media = normalizeProductMedia(product.value, { sku: selectedSku.value });
   event.target.src = media.placeholder;
 }
 
@@ -347,4 +347,16 @@ watch(() => route.params.slug, (slug) => {
 watch(maxAvailableStock, () => {
   sanitizeQuantity();
 });
+
+watch(
+  [() => selectedSku.value?.id, () => product.value?.id],
+  () => {
+    if (!product.value) {
+      return;
+    }
+
+    const media = normalizeProductMedia(product.value, { sku: selectedSku.value });
+    activeImage.value = media.primaryImage || media.placeholder;
+  }
+);
 </script>

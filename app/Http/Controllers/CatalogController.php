@@ -20,7 +20,7 @@ class CatalogController extends Controller
     public function index(Request $request)
     {
         $query = Product::query()
-            ->with(['skus.stocks', 'categories', 'images'])
+            ->with(['skus.stocks', 'skus.images', 'categories', 'images'])
             ->withCount(['reviews as review_count' => function ($q) {
                 $q->where('is_approved', true);
             }])
@@ -150,6 +150,7 @@ class CatalogController extends Controller
         $product = Product::where('slug', $slug)
             ->with([
                 'skus.stocks.warehouse',
+                'skus.images',
                 'skus.attributeValues.attribute',
                 'attributes.values',
                 'categories',
@@ -206,7 +207,7 @@ class CatalogController extends Controller
             'q' => 'required|string|min:2',
         ]);
 
-        $results = Product::with(['skus.stocks'])
+        $results = Product::with(['skus.stocks', 'skus.images'])
             ->where('status', 'active')
             ->where(function ($query) use ($request) {
                 $query->where('title', 'like', "%{$request->q}%")
@@ -255,6 +256,23 @@ class CatalogController extends Controller
         $product->setAttribute('max_option_price', $maxOptionPrice !== null ? (float) $maxOptionPrice : null);
         $product->setAttribute('display_price', $hasOptions ? ($minOptionPrice ?? $product->base_price) : $product->base_price);
         $product->setAttribute('is_in_stock', $inStockSkus->isNotEmpty());
+
+        $product->setRelation('skus', $product->skus->map(function ($sku) {
+            $availableStock = $sku->stocks->sum(function ($stock) {
+                return (int) $stock->on_hand - (int) $stock->reserved;
+            });
+
+            if ($availableStock <= 0 && (int) ($sku->stock_quantity ?? 0) > 0) {
+                $availableStock = (int) $sku->stock_quantity;
+            }
+
+            $sku->setAttribute('label', $sku->display_label);
+            $sku->setAttribute('available_stock', max(0, (int) $availableStock));
+            $sku->setAttribute('in_stock', $availableStock > 0);
+            $sku->setAttribute('is_active', (bool) ($sku->active ?? true));
+
+            return $sku;
+        })->values());
 
         return $product;
     }

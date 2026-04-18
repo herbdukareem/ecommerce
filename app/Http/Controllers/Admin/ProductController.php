@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\ProductImage;
 use App\Models\Sku;
+use App\Models\SkuImage;
 use App\Models\Category;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -19,7 +20,7 @@ class ProductController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Product::with(['vendor', 'categories', 'skus', 'images']);
+        $query = Product::with(['vendor', 'categories', 'skus.images', 'images']);
 
         // Search
         if ($request->filled('search')) {
@@ -166,7 +167,7 @@ class ProductController extends Controller
                 ]);
             }
 
-            return $product->load(['vendor', 'categories', 'skus']);
+            return $product->load(['vendor', 'categories', 'skus.images']);
         });
 
         return response()->json([
@@ -180,7 +181,7 @@ class ProductController extends Controller
      */
     public function show($id)
     {
-        $product = Product::with(['vendor', 'categories', 'skus.stocks', 'reviews', 'images'])
+        $product = Product::with(['vendor', 'categories', 'skus.stocks', 'skus.images', 'reviews', 'images'])
             ->findOrFail($id);
 
         return response()->json($product);
@@ -321,7 +322,7 @@ class ProductController extends Controller
                 }
             }
 
-            return $product->load(['vendor', 'categories', 'skus']);
+            return $product->load(['vendor', 'categories', 'skus.images']);
         });
 
         return response()->json([
@@ -472,6 +473,104 @@ class ProductController extends Controller
         return response()->json([
             'message' => 'Image deleted successfully.',
             'images' => $product->fresh('images')->images,
+        ]);
+    }
+
+    public function uploadSkuImages(Request $request, int $productId, int $skuId)
+    {
+        $product = Product::query()->findOrFail($productId);
+        $sku = Sku::query()->where('product_id', $product->id)->findOrFail($skuId);
+
+        $data = $request->validate([
+            'images' => 'required|array|min:1',
+            'images.*' => 'required|image|mimes:jpg,jpeg,png,webp|max:10240',
+            'alt_text' => 'nullable|string|max:255',
+        ]);
+
+        $orderOffset = (int) $sku->images()->max('sort_order') + 1;
+        $hasPrimary = $sku->images()->where('is_primary', true)->exists();
+
+        foreach ($data['images'] as $index => $image) {
+            $path = $image->store('skus', 'public');
+
+            SkuImage::create([
+                'sku_id' => $sku->id,
+                'image_path' => $path,
+                'alt_text' => $data['alt_text'] ?? null,
+                'sort_order' => $orderOffset + $index,
+                'is_primary' => !$hasPrimary && $index === 0,
+                'created_by' => $request->user()->id,
+            ]);
+        }
+
+        return response()->json([
+            'message' => 'SKU images uploaded successfully.',
+            'images' => $sku->fresh('images')->images,
+        ]);
+    }
+
+    public function setPrimarySkuImage(Request $request, int $productId, int $skuId, int $imageId)
+    {
+        $product = Product::query()->findOrFail($productId);
+        $sku = Sku::query()->where('product_id', $product->id)->findOrFail($skuId);
+        $image = $sku->images()->where('id', $imageId)->firstOrFail();
+
+        $sku->images()->update(['is_primary' => false]);
+        $image->update(['is_primary' => true]);
+
+        return response()->json([
+            'message' => 'Primary SKU image updated successfully.',
+            'images' => $sku->fresh('images')->images,
+        ]);
+    }
+
+    public function deleteSkuImage(Request $request, int $productId, int $skuId, int $imageId)
+    {
+        $product = Product::query()->findOrFail($productId);
+        $sku = Sku::query()->where('product_id', $product->id)->findOrFail($skuId);
+        $image = $sku->images()->where('id', $imageId)->firstOrFail();
+
+        Storage::disk('public')->delete($image->image_path);
+        $image->delete();
+
+        $remaining = $sku->fresh('images');
+        if ($remaining->images->isNotEmpty() && !$remaining->images->contains(fn ($entry) => (bool) $entry->is_primary)) {
+            $first = $remaining->images->sortBy('sort_order')->first();
+            $first?->update(['is_primary' => true]);
+        }
+
+        return response()->json([
+            'message' => 'SKU image deleted successfully.',
+            'images' => $sku->fresh('images')->images,
+        ]);
+    }
+
+    public function reorderSkuImages(Request $request, int $productId, int $skuId)
+    {
+        $product = Product::query()->findOrFail($productId);
+        $sku = Sku::query()->where('product_id', $product->id)->findOrFail($skuId);
+
+        $data = $request->validate([
+            'image_ids' => 'required|array|min:1',
+            'image_ids.*' => 'required|integer|exists:sku_images,id',
+        ]);
+
+        $currentImageIds = $sku->images->pluck('id')->sort()->values()->all();
+        $incoming = collect($data['image_ids'])->map(fn ($id) => (int) $id)->values()->all();
+        $incomingSorted = $incoming;
+        sort($incomingSorted);
+
+        if ($currentImageIds !== $incomingSorted) {
+            return response()->json(['message' => 'Image set does not match this SKU.'], 422);
+        }
+
+        foreach ($incoming as $index => $id) {
+            SkuImage::query()->where('id', $id)->update(['sort_order' => $index]);
+        }
+
+        return response()->json([
+            'message' => 'SKU image order updated successfully.',
+            'images' => $sku->fresh('images')->images,
         ]);
     }
 

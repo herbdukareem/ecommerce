@@ -30,6 +30,7 @@ class Sku extends Model
 
     protected $appends = [
         'display_label',
+        'primary_image_url',
     ];
 
     protected static function booted(): void
@@ -82,6 +83,19 @@ class Sku extends Model
         return $this->hasMany(InventoryLedgerEntry::class, 'variant_id');
     }
 
+    public function images()
+    {
+        return $this->hasMany(SkuImage::class)->orderBy('sort_order')->orderBy('id');
+    }
+
+    public function primaryImage()
+    {
+        return $this->hasOne(SkuImage::class)
+            ->where('is_primary', true)
+            ->orderBy('sort_order')
+            ->orderBy('id');
+    }
+
     /**
      * Alias for option naming in UI and APIs.
      */
@@ -90,5 +104,18 @@ class Sku extends Model
         $variantAttributes = $this->getAttribute('attributes');
         $rawAttributeName = is_array($variantAttributes) ? data_get($variantAttributes, 'name') : null;
         return (string) ($this->option_label ?: $rawAttributeName ?: $this->sku_code ?: ('Option #' . $this->id));
+    }
+
+    public function getPrimaryImageUrlAttribute(): ?string
+    {
+        $primary = $this->relationLoaded('images')
+            ? $this->images->firstWhere('is_primary', true) ?: $this->images->sortBy('sort_order')->first()
+            : $this->primaryImage()->first();
+
+        if ($primary) {
+            return $primary->image_url;
+        }
+
+        return $this->image_path ? \Storage::url($this->image_path) : null;
     }
 }

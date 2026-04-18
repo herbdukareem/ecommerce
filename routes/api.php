@@ -129,6 +129,10 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::put('/products/{id}/images/order', [App\Http\Controllers\Admin\ProductController::class, 'reorderImages'])->middleware('can:product-image.manage');
         Route::put('/products/{id}/images/{imageId}/primary', [App\Http\Controllers\Admin\ProductController::class, 'setPrimaryImage'])->middleware('can:product-image.manage');
         Route::delete('/products/{id}/images/{imageId}', [App\Http\Controllers\Admin\ProductController::class, 'deleteImage'])->middleware('can:product-image.manage');
+        Route::post('/products/{id}/skus/{skuId}/images', [App\Http\Controllers\Admin\ProductController::class, 'uploadSkuImages'])->middleware('can:product-option.update');
+        Route::put('/products/{id}/skus/{skuId}/images/order', [App\Http\Controllers\Admin\ProductController::class, 'reorderSkuImages'])->middleware('can:product-option.update');
+        Route::put('/products/{id}/skus/{skuId}/images/{imageId}/primary', [App\Http\Controllers\Admin\ProductController::class, 'setPrimarySkuImage'])->middleware('can:product-option.update');
+        Route::delete('/products/{id}/skus/{skuId}/images/{imageId}', [App\Http\Controllers\Admin\ProductController::class, 'deleteSkuImage'])->middleware('can:product-option.update');
 
         // Vendor Management
         Route::get('/vendors', [App\Http\Controllers\Admin\VendorController::class, 'index']);

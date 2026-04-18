@@ -65,6 +65,7 @@
               :elevation="2"
               hoverable
               clickable
+              allow-overflow
               @click="$router.push(`/products/${product.slug}`)"
             >
               <div class="h-44 rounded-lg bg-gradient-to-br from-primary/10 to-primary-dark/10 flex items-center justify-center mb-4">
@@ -84,15 +85,60 @@
                 <span class="text-lg font-bold text-primary">
                   {{ product.has_options ? `From ${formatCurrency(product.display_price || product.base_price)}` : formatCurrency(product.base_price) }}
                 </span>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  icon="cart-plus"
-                  :disabled="isProductOutOfStock(product)"
-                  @click.stop="addToCart(product)"
-                >
-                  {{ cartButtonLabel(product) }}
-                </Button>
+
+                <div class="relative" data-option-menu>
+                  <Button
+                    v-if="needsQuickOptionSelection(product)"
+                    variant="outline"
+                    size="sm"
+                    icon="tune-variant"
+                    @click.stop="toggleOptionMenu(product.id)"
+                  >
+                    Select options
+                  </Button>
+                  <Button
+                    v-else
+                    variant="primary"
+                    size="sm"
+                    icon="cart-plus"
+                    :disabled="isProductOutOfStock(product)"
+                    @click.stop="addToCart(product)"
+                  >
+                    {{ cartButtonLabel(product) }}
+                  </Button>
+
+                  <div
+                    v-if="openOptionMenuId === product.id"
+                    class="absolute right-0 mt-2 z-20 w-64 rounded-lg border border-DEFAULT bg-base p-3 shadow-material-3"
+                    @click.stop
+                  >
+                    <p class="text-xs font-semibold uppercase tracking-wide text-secondary mb-2">Choose option</p>
+                    <div class="max-h-56 overflow-y-auto space-y-2">
+                      <button
+                        v-for="sku in productQuickOptions(product)"
+                        :key="sku.id"
+                        type="button"
+                        class="w-full rounded-md border px-2 py-2 text-left transition"
+                        :class="optionButtonClass(sku, selectedOptionByProduct[product.id])"
+                        :disabled="!isSkuPurchasable(sku)"
+                        @click="selectedOptionByProduct[product.id] = sku.id"
+                      >
+                        <p class="text-sm font-semibold text-primary truncate">{{ sku.display_label || sku.option_label || sku.label || sku.sku_code }}</p>
+                        <p class="text-xs text-secondary">{{ formatCurrency(sku.price || 0) }}</p>
+                      </button>
+                    </div>
+
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      class="w-full mt-3"
+                      :disabled="!selectedOptionByProduct[product.id] || quickAddLoading[product.id]"
+                      @click="quickAddSelectedOption(product)"
+                    >
+                      {{ quickAddLoading[product.id] ? 'Adding...' : 'Add to cart' }}
+                    </Button>
+                  </div>
+                </div>
               </div>
             </Card>
           </div>
@@ -113,7 +159,7 @@
 </template>
 
 <script setup>
-import { computed, inject, onMounted, reactive, ref } from 'vue';
+import { computed, inject, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import MainLayout from '../components/layout/MainLayout.vue';
 import Card from '../components/ui/Card.vue';
@@ -140,6 +186,9 @@ const products = computed(() => catalogStore.products);
 const pagination = computed(() => catalogStore.pagination);
 const categories = computed(() => catalogStore.categories || []);
 const errorMessage = ref('');
+const openOptionMenuId = ref(null);
+const selectedOptionByProduct = ref({});
+const quickAddLoading = ref({});
 
 const localFilters = reactive({
   q: '',
@@ -170,6 +219,73 @@ const categoryOptions = computed(() => {
 const formatCurrency = settingsStore.formatCurrency;
 
 const isProductOutOfStock = (product) => resolveProductPurchase(product).outOfStock;
+const needsQuickOptionSelection = (product) => {
+  const purchase = resolveProductPurchase(product);
+  return purchase.requiresSelection && !purchase.outOfStock;
+};
+
+const skuAvailableStock = (sku) => {
+  if (Number.isFinite(Number(sku?.available_stock))) {
+    return Number(sku.available_stock);
+  }
+
+  if (Array.isArray(sku?.stocks) && sku.stocks.length > 0) {
+    return sku.stocks.reduce((sum, stock) => sum + Number(stock?.on_hand || 0) - Number(stock?.reserved || 0), 0);
+  }
+
+  return Number(sku?.stock_quantity || 0);
+};
+
+const isSkuActive = (sku) => Boolean(sku) && sku.active !== false && sku.is_active !== false;
+const isSkuPurchasable = (sku) => isSkuActive(sku) && skuAvailableStock(sku) > 0;
+const productQuickOptions = (product) => (product?.skus || [])
+  .filter((sku) => isSkuActive(sku))
+  .sort((a, b) => Number(a?.sort_order || 0) - Number(b?.sort_order || 0));
+
+const optionButtonClass = (sku, selectedId) => {
+  if (!isSkuPurchasable(sku)) {
+    return 'border-DEFAULT bg-surface opacity-50 cursor-not-allowed';
+  }
+
+  if (Number(selectedId) === Number(sku.id)) {
+    return 'border-primary bg-primary/5';
+  }
+
+  return 'border-DEFAULT hover:border-primary/40';
+};
+
+const setDefaultQuickOption = (product) => {
+  if (!product || selectedOptionByProduct.value[product.id]) {
+    return;
+  }
+
+  const firstInStock = productQuickOptions(product).find(isSkuPurchasable);
+  if (firstInStock) {
+    selectedOptionByProduct.value[product.id] = firstInStock.id;
+  }
+};
+
+const toggleOptionMenu = (productId) => {
+  openOptionMenuId.value = openOptionMenuId.value === productId ? null : productId;
+  const product = products.value.find((item) => item.id === productId);
+  setDefaultQuickOption(product);
+};
+
+const closeOptionMenu = () => {
+  openOptionMenuId.value = null;
+};
+
+const handleDocumentClick = (event) => {
+  const target = event?.target;
+  if (!target) {
+    return;
+  }
+
+  const menu = target.closest('[data-option-menu]');
+  if (!menu) {
+    closeOptionMenu();
+  }
+};
 
 const cartButtonLabel = (product) => {
   const purchase = resolveProductPurchase(product);
@@ -243,6 +359,39 @@ const addToCart = async (product) => {
   }
 };
 
+const quickAddSelectedOption = async (product) => {
+  if (!authStore.isAuthenticated) {
+    toast?.warning('Please login to add items to your cart.');
+    router.push({ name: 'Login', query: { redirect: route.fullPath } });
+    return;
+  }
+
+  const selectedSkuId = selectedOptionByProduct.value[product.id];
+  if (!selectedSkuId) {
+    toast?.warning('Please select an option first.');
+    return;
+  }
+
+  quickAddLoading.value = {
+    ...quickAddLoading.value,
+    [product.id]: true,
+  };
+
+  const result = await cartStore.addItem({ product_id: product.id, sku_id: selectedSkuId }, 1);
+  quickAddLoading.value = {
+    ...quickAddLoading.value,
+    [product.id]: false,
+  };
+
+  if (result.success) {
+    toast?.success('Added to cart');
+    closeOptionMenu();
+    return;
+  }
+
+  toast?.error(result.error || 'Failed to add item to cart');
+};
+
 const onImageError = (event, fallback) => {
   if (!event?.target) return;
   event.target.src = fallback;
@@ -252,7 +401,12 @@ onMounted(async () => {
   if (route.query.category_id) {
     localFilters.category_id = Number(route.query.category_id) || null;
   }
+  document.addEventListener('click', handleDocumentClick);
   await Promise.all([catalogStore.fetchCategories(), catalogStore.fetchAttributes()]);
   await applyFilters();
+});
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', handleDocumentClick);
 });
 </script>

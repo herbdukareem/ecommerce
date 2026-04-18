@@ -25,8 +25,8 @@ return new class extends Migration
             $table->foreignId('created_by')->nullable()->after('metadata')->constrained('users')->nullOnDelete();
             $table->foreignId('updated_by')->nullable()->after('created_by')->constrained('users')->nullOnDelete();
 
-            $table->index(['product_id', 'active', 'sort_order'], 'skus_product_active_sort_idx');
-            $table->unique(['product_id', 'option_label'], 'skus_product_option_label_unique');
+            $table->index(['product_id', 'active', 'sort_order']);
+            $table->unique(['product_id', 'option_label']);
         });
 
         Schema::table('cart_items', function (Blueprint $table) {
@@ -46,14 +46,14 @@ return new class extends Migration
 
         Schema::table('inventory_ledger_entries', function (Blueprint $table) {
             $table->foreignId('product_option_id')->nullable()->after('variant_id')->constrained('skus')->nullOnDelete();
-            $table->index(['product_option_id', 'created_at'], 'inventory_ledger_option_created_idx');
+            $table->index(['product_option_id', 'created_at']);
         });
     }
 
     public function down(): void
     {
         Schema::table('inventory_ledger_entries', function (Blueprint $table) {
-            $table->dropIndex('inventory_ledger_option_created_idx');
+            $table->dropIndex(['product_option_id', 'created_at']);
             $table->dropConstrainedForeignId('product_option_id');
         });
 
@@ -69,8 +69,8 @@ return new class extends Migration
         });
 
         Schema::table('skus', function (Blueprint $table) {
-            $table->dropUnique('skus_product_option_label_unique');
-            $table->dropIndex('skus_product_active_sort_idx');
+            $table->dropUnique(['product_id', 'option_label']);
+            $table->dropIndex(['product_id', 'active', 'sort_order']);
             $table->dropConstrainedForeignId('created_by');
             $table->dropConstrainedForeignId('updated_by');
             $table->dropColumn([

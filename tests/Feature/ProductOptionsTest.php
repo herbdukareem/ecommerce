@@ -4,9 +4,12 @@ namespace Tests\Feature;
 
 use App\Models\OrderItem;
 use App\Models\Sku;
+use App\Models\SkuImage;
 use App\Models\Stock;
 use Database\Seeders\PermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
 use Tests\Feature\Support\CreatesCommerceData;
 use Tests\TestCase;
@@ -308,5 +311,80 @@ class ProductOptionsTest extends TestCase
         $this->assertDatabaseHas('inventory_ledger_entries', [
             'product_option_id' => $commerce['options'][0]->id,
         ]);
+    }
+
+    public function test_admin_can_manage_sku_images_for_product_option(): void
+    {
+        Storage::fake('public');
+
+        $admin = $this->makeUserWithRole('Admin', 'admin-option-images@test.com');
+        $vendor = $this->makeUserWithRole('Vendor', 'vendor-option-images@test.com');
+        $commerce = $this->makeOptionedProductWithStock($vendor);
+
+        Sanctum::actingAs($admin);
+
+        $sku = $commerce['options'][0];
+
+        $upload = $this->post('/api/admin/products/' . $commerce['product']->id . '/skus/' . $sku->id . '/images', [
+            'images' => [
+                UploadedFile::fake()->image('option-front.jpg'),
+                UploadedFile::fake()->image('option-side.jpg'),
+            ],
+        ], [
+            'Accept' => 'application/json',
+        ])->assertOk();
+
+        $images = $upload->json('images');
+        $this->assertCount(2, $images);
+
+        $firstId = $images[0]['id'];
+        $secondId = $images[1]['id'];
+
+        $this->putJson('/api/admin/products/' . $commerce['product']->id . '/skus/' . $sku->id . '/images/order', [
+            'image_ids' => [$secondId, $firstId],
+        ])->assertOk();
+
+        $this->putJson('/api/admin/products/' . $commerce['product']->id . '/skus/' . $sku->id . '/images/' . $secondId . '/primary')
+            ->assertOk();
+
+        $this->deleteJson('/api/admin/products/' . $commerce['product']->id . '/skus/' . $sku->id . '/images/' . $firstId)
+            ->assertOk();
+
+        $this->assertDatabaseMissing('sku_images', ['id' => $firstId]);
+        $this->assertDatabaseHas('sku_images', ['id' => $secondId, 'is_primary' => true]);
+    }
+
+    public function test_catalog_product_payload_includes_sku_images_with_primary_url(): void
+    {
+        $vendor = $this->makeUserWithRole('Vendor', 'vendor-option-catalog-media@test.com');
+        $commerce = $this->makeOptionedProductWithStock($vendor);
+
+        $sku = $commerce['options'][0];
+
+        SkuImage::create([
+            'sku_id' => $sku->id,
+            'image_path' => 'skus/option-primary.jpg',
+            'is_primary' => true,
+            'sort_order' => 0,
+            'created_by' => $vendor->id,
+        ]);
+
+        SkuImage::create([
+            'sku_id' => $sku->id,
+            'image_path' => 'skus/option-secondary.jpg',
+            'is_primary' => false,
+            'sort_order' => 1,
+            'created_by' => $vendor->id,
+        ]);
+
+        $payload = $this->getJson('/api/products/' . $commerce['product']->slug)
+            ->assertOk()
+            ->json();
+
+        $matchedSku = collect($payload['skus'] ?? [])->firstWhere('id', $sku->id);
+
+        $this->assertNotNull($matchedSku);
+        $this->assertEquals('/storage/skus/option-primary.jpg', $matchedSku['primary_image_url'] ?? null);
+        $this->assertCount(2, $matchedSku['images'] ?? []);
     }
 }

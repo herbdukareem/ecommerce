@@ -23,9 +23,43 @@ const normalizeUrl = (value) => {
 };
 
 const sortByOrder = (a, b) => Number(a?.order || 0) - Number(b?.order || 0);
+const sortSkuImagesByOrder = (a, b) => Number(a?.sort_order || 0) - Number(b?.sort_order || 0);
 
-export const normalizeProductMedia = (product) => {
+const resolveSkuGallery = (sku) => {
+  const skuImages = Array.isArray(sku?.images) ? [...sku.images].sort(sortSkuImagesByOrder) : [];
+  const gallery = skuImages
+    .map((image) => normalizeUrl(image.image_url || image.image_path))
+    .filter(Boolean);
+
+  const primary = skuImages.find((image) => image.is_primary);
+  const primaryImage = normalizeUrl(
+    primary?.image_url ||
+    primary?.image_path ||
+    sku?.primary_image_url ||
+    sku?.image_path ||
+    gallery[0]
+  );
+
+  return {
+    primaryImage,
+    gallery: Array.from(new Set([primaryImage, ...gallery].filter(Boolean))),
+  };
+};
+
+export const normalizeProductMedia = (product, options = {}) => {
   if (!product || typeof product !== 'object') return { primaryImage: null, gallery: [] };
+
+  const selectedSku = options?.sku;
+  if (selectedSku) {
+    const skuMedia = resolveSkuGallery(selectedSku);
+    if (skuMedia.gallery.length) {
+      return {
+        primaryImage: skuMedia.primaryImage,
+        gallery: skuMedia.gallery,
+        placeholder: DEFAULT_PLACEHOLDER,
+      };
+    }
+  }
 
   const relationImages = Array.isArray(product.images) ? [...product.images].sort(sortByOrder) : [];
   const relationGallery = relationImages

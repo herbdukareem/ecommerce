@@ -95,6 +95,7 @@
             :elevation="2"
             hoverable
             clickable
+            allow-overflow
             animation="fade-in-up"
             :class="`stagger-${index + 1}`"
             @click="$router.push(`/products/${product.slug}`)"
@@ -127,19 +128,63 @@
             </div>
             <div class="flex items-center justify-between">
               <div>
-                <span class="text-lg font-bold text-primary">{{ formatCurrency(product.base_price) }}</span>
+                <span class="text-lg font-bold text-primary">{{ product.has_options ? `From ${formatCurrency(product.display_price || product.base_price)}` : formatCurrency(product.base_price) }}</span>
                 <span v-if="product.originalPrice" class="text-sm text-secondary line-through ml-2">
                   {{ formatCurrency(product.originalPrice) }}
                 </span>
               </div>
-              <Button
-                variant="primary"
-                size="sm"
-                icon="cart-plus"
-                icon-only
-                :disabled="isProductOutOfStock(product)"
-                @click.stop="addToCart(product)"
-              />
+
+              <div class="relative" data-option-menu>
+                <Button
+                  v-if="needsQuickOptionSelection(product)"
+                  variant="outline"
+                  size="sm"
+                  icon="tune-variant"
+                  @click.stop="toggleOptionMenu(product.id)"
+                >
+                  Select options
+                </Button>
+                <Button
+                  v-else
+                  variant="primary"
+                  size="sm"
+                  icon="cart-plus"
+                  icon-only
+                  :disabled="isProductOutOfStock(product)"
+                  @click.stop="addToCart(product)"
+                />
+
+                <div
+                  v-if="openOptionMenuId === product.id"
+                  class="absolute right-0 mt-2 z-20 w-64 rounded-lg border border-DEFAULT bg-base p-3 shadow-material-3"
+                  @click.stop
+                >
+                  <p class="text-xs font-semibold uppercase tracking-wide text-secondary mb-2">Choose option</p>
+                  <div class="max-h-56 overflow-y-auto space-y-2">
+                    <button
+                      v-for="sku in productQuickOptions(product)"
+                      :key="sku.id"
+                      type="button"
+                      class="w-full rounded-md border px-2 py-2 text-left transition"
+                      :class="optionButtonClass(sku, selectedOptionByProduct[product.id])"
+                      :disabled="!isSkuPurchasable(sku)"
+                      @click="selectedOptionByProduct[product.id] = sku.id"
+                    >
+                      <p class="text-sm font-semibold text-primary truncate">{{ sku.display_label || sku.option_label || sku.label || sku.sku_code }}</p>
+                      <p class="text-xs text-secondary">{{ formatCurrency(sku.price || 0) }}</p>
+                    </button>
+                  </div>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    class="w-full mt-3"
+                    :disabled="!selectedOptionByProduct[product.id] || quickAddLoading[product.id]"
+                    @click="quickAddSelectedOption(product)"
+                  >
+                    {{ quickAddLoading[product.id] ? 'Adding...' : 'Add to cart' }}
+                  </Button>
+                </div>
+              </div>
             </div>
           </Card>
         </div>
@@ -181,7 +226,7 @@
 </template>
 
 <script setup>
-import { computed, inject, onMounted, ref } from 'vue';
+import { computed, inject, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import axios from 'axios';
 import MainLayout from '../components/layout/MainLayout.vue';
@@ -205,10 +250,80 @@ const featuredProducts = ref([]);
 const categories = ref([]);
 const loading = ref(false);
 const loadError = ref('');
+const openOptionMenuId = ref(null);
+const selectedOptionByProduct = ref({});
+const quickAddLoading = ref({});
 
 const formatCurrency = settingsStore.formatCurrency;
 const isAuthenticated = computed(() => authStore.isAuthenticated);
 const isProductOutOfStock = (product) => resolveProductPurchase(product).outOfStock;
+const needsQuickOptionSelection = (product) => {
+  const purchase = resolveProductPurchase(product);
+  return purchase.requiresSelection && !purchase.outOfStock;
+};
+
+const skuAvailableStock = (sku) => {
+  if (Number.isFinite(Number(sku?.available_stock))) {
+    return Number(sku.available_stock);
+  }
+
+  if (Array.isArray(sku?.stocks) && sku.stocks.length > 0) {
+    return sku.stocks.reduce((sum, stock) => sum + Number(stock?.on_hand || 0) - Number(stock?.reserved || 0), 0);
+  }
+
+  return Number(sku?.stock_quantity || 0);
+};
+
+const isSkuActive = (sku) => Boolean(sku) && sku.active !== false && sku.is_active !== false;
+const isSkuPurchasable = (sku) => isSkuActive(sku) && skuAvailableStock(sku) > 0;
+const productQuickOptions = (product) => (product?.skus || [])
+  .filter((sku) => isSkuActive(sku))
+  .sort((a, b) => Number(a?.sort_order || 0) - Number(b?.sort_order || 0));
+
+const optionButtonClass = (sku, selectedId) => {
+  if (!isSkuPurchasable(sku)) {
+    return 'border-DEFAULT bg-surface opacity-50 cursor-not-allowed';
+  }
+
+  if (Number(selectedId) === Number(sku.id)) {
+    return 'border-primary bg-primary/5';
+  }
+
+  return 'border-DEFAULT hover:border-primary/40';
+};
+
+const setDefaultQuickOption = (product) => {
+  if (!product || selectedOptionByProduct.value[product.id]) {
+    return;
+  }
+
+  const firstInStock = productQuickOptions(product).find(isSkuPurchasable);
+  if (firstInStock) {
+    selectedOptionByProduct.value[product.id] = firstInStock.id;
+  }
+};
+
+const toggleOptionMenu = (productId) => {
+  openOptionMenuId.value = openOptionMenuId.value === productId ? null : productId;
+  const product = featuredProducts.value.find((item) => item.id === productId);
+  setDefaultQuickOption(product);
+};
+
+const closeOptionMenu = () => {
+  openOptionMenuId.value = null;
+};
+
+const handleDocumentClick = (event) => {
+  const target = event?.target;
+  if (!target) {
+    return;
+  }
+
+  const menu = target.closest('[data-option-menu]');
+  if (!menu) {
+    closeOptionMenu();
+  }
+};
 
 const normalizeFeaturedProduct = (product) => {
   const media = normalizeProductMedia(product);
@@ -264,6 +379,42 @@ const addToCart = async (product) => {
   }
 };
 
+const quickAddSelectedOption = async (product) => {
+  if (!product) {
+    return;
+  }
+
+  if (!isAuthenticated.value) {
+    toast?.warning('Please login to add items to your cart.');
+    router.push({ name: 'Login', query: { redirect: route.fullPath } });
+    return;
+  }
+
+  const selectedSkuId = selectedOptionByProduct.value[product.id];
+  if (!selectedSkuId) {
+    toast?.warning('Please select an option first.');
+    return;
+  }
+
+  quickAddLoading.value = {
+    ...quickAddLoading.value,
+    [product.id]: true,
+  };
+
+  const result = await cartStore.addItem({ product_id: product.id, sku_id: selectedSkuId }, 1);
+  quickAddLoading.value = {
+    ...quickAddLoading.value,
+    [product.id]: false,
+  };
+
+  if (result.success) {
+    toast?.success('Added to cart');
+    closeOptionMenu();
+  } else {
+    toast?.error(result.error || 'Failed to add item to cart');
+  }
+};
+
 const onImageError = (event, fallback) => {
   if (!event?.target) return;
   if (event.target.src !== fallback) {
@@ -271,5 +422,12 @@ const onImageError = (event, fallback) => {
   }
 };
 
-onMounted(loadHomeData);
+onMounted(async () => {
+  await loadHomeData();
+  document.addEventListener('click', handleDocumentClick);
+});
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', handleDocumentClick);
+});
 </script>

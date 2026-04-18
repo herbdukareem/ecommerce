@@ -11,8 +11,8 @@
     >
       <div class="flex items-start gap-3">
         <img
-          v-if="sku.image_path"
-          :src="sku.image_path"
+          v-if="skuImage(sku)"
+          :src="skuImage(sku)"
           :alt="optionLabel(sku)"
           class="h-12 w-12 rounded-md border border-DEFAULT object-cover"
           @error="onImageError"
@@ -57,6 +57,7 @@ const options = computed(() => {
 });
 
 const optionLabel = (sku) => sku?.display_label || sku?.option_label || sku?.attributes?.name || sku?.sku_code || 'Option';
+const skuImage = (sku) => sku?.primary_image_url || sku?.image_path || sku?.images?.[0]?.image_url || null;
 
 const getAvailableStock = (sku) => {
   if (Array.isArray(sku?.stocks) && sku.stocks.length > 0) {
