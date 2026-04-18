@@ -4,6 +4,12 @@ on:
   push:
     branches: ["main"]
   workflow_dispatch:
+    inputs:
+      hotfix_app_only:
+        description: "Deploy app code only (skip vendor)"
+        required: false
+        type: boolean
+        default: true
 
 concurrency:
   group: cpanel-deploy-main
@@ -21,6 +27,8 @@ jobs:
       CPANEL_FTP_USERNAME: ${{ secrets.CPANEL_FTP_USERNAME }}
       CPANEL_FTP_PASSWORD: ${{ secrets.CPANEL_FTP_PASSWORD }}
       CPANEL_FTP_PORT: ${{ secrets.CPANEL_FTP_PORT || '21' }}
+      CPANEL_FTPS_LEGACY_PORT: ${{ secrets.CPANEL_FTPS_LEGACY_PORT || '990' }}
+      HOTFIX_APP_ONLY: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.hotfix_app_only == 'true' }}
 
     steps:
       - name: Checkout
@@ -57,6 +65,7 @@ jobs:
           npm run build
 
       - name: Install production PHP dependencies
+        if: env.HOTFIX_APP_ONLY != 'true'
         run: |
           set -euo pipefail
           composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
@@ -64,7 +73,7 @@ jobs:
       - name: Deploy to cPanel via FTPS
         id: deploy_ftps
         continue-on-error: true
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.6
         with:
           server: ${{ env.CPANEL_FTP_HOST }}
           username: ${{ env.CPANEL_FTP_USERNAME }}
@@ -73,6 +82,9 @@ jobs:
           protocol: ftps
           local-dir: ./
           server-dir: ${{ env.FTP_TARGET_DIR }}
+          state-name: ${{ env.HOTFIX_APP_ONLY == 'true' && '.ftp-deploy-sync-state-hotfix.json' || '.ftp-deploy-sync-state.json' }}
+          timeout: 120000
+          log-level: standard
           dangerous-clean-slate: false
           exclude: |
             **/.git/**
@@ -88,11 +100,13 @@ jobs:
             **/phpunit.xml
             **/*.md
             **/.DS_Store
+            ${{ env.HOTFIX_APP_ONLY == 'true' && '**/vendor/**' || '' }}
 
       - name: Deploy to cPanel via FTP (fallback)
         id: deploy_ftp
         if: steps.deploy_ftps.outcome == 'failure'
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        continue-on-error: true
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.6
         with:
           server: ${{ env.CPANEL_FTP_HOST }}
           username: ${{ env.CPANEL_FTP_USERNAME }}
@@ -101,6 +115,9 @@ jobs:
           protocol: ftp
           local-dir: ./
           server-dir: ${{ env.FTP_TARGET_DIR }}
+          state-name: ${{ env.HOTFIX_APP_ONLY == 'true' && '.ftp-deploy-sync-state-hotfix.json' || '.ftp-deploy-sync-state.json' }}
+          timeout: 120000
+          log-level: standard
           dangerous-clean-slate: false
           exclude: |
             **/.git/**
@@ -116,16 +133,52 @@ jobs:
             **/phpunit.xml
             **/*.md
             **/.DS_Store
+            ${{ env.HOTFIX_APP_ONLY == 'true' && '**/vendor/**' || '' }}
+
+      - name: Deploy to cPanel via FTPS legacy (final fallback)
+        id: deploy_ftps_legacy
+        if: steps.deploy_ftps.outcome == 'failure' && steps.deploy_ftp.outcome == 'failure'
+        continue-on-error: true
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.6
+        with:
+          server: ${{ env.CPANEL_FTP_HOST }}
+          username: ${{ env.CPANEL_FTP_USERNAME }}
+          password: ${{ env.CPANEL_FTP_PASSWORD }}
+          port: ${{ env.CPANEL_FTPS_LEGACY_PORT }}
+          protocol: ftps-legacy
+          local-dir: ./
+          server-dir: ${{ env.FTP_TARGET_DIR }}
+          state-name: ${{ env.HOTFIX_APP_ONLY == 'true' && '.ftp-deploy-sync-state-hotfix.json' || '.ftp-deploy-sync-state.json' }}
+          timeout: 120000
+          log-level: standard
+          dangerous-clean-slate: false
+          exclude: |
+            **/.git/**
+            **/.github/**
+            **/node_modules/**
+            **/tests/**
+            **/storage/logs/**
+            **/storage/framework/cache/**
+            **/storage/framework/sessions/**
+            **/storage/framework/views/**
+            **/.env
+            **/.env.*
+            **/phpunit.xml
+            **/*.md
+            **/.DS_Store
+            ${{ env.HOTFIX_APP_ONLY == 'true' && '**/vendor/**' || '' }}
 
       - name: Fail if both FTPS and FTP failed
-        if: steps.deploy_ftps.outcome == 'failure' && steps.deploy_ftp.outcome == 'failure'
+        if: steps.deploy_ftps.outcome == 'failure' && steps.deploy_ftp.outcome == 'failure' && steps.deploy_ftps_legacy.outcome == 'failure'
         run: |
-          echo "Both FTPS and FTP failed."
+          echo "FTPS, FTP, and FTPS legacy all failed."
           echo "Verify CPANEL_FTP_HOST, CPANEL_FTP_USERNAME, and CPANEL_FTP_PASSWORD."
           echo "For cPanel, use the exact FTP account username format from cPanel FTP Accounts (often user@domain)."
+          echo "If the error includes 'Timeout when trying to open data connection', ask hosting support to check passive FTP ports/firewall/NAT settings."
           exit 1
 
       - name: Deployment note
         run: |
           echo "Deploy completed over FTP/FTPS."
           echo "SSH is disabled on this cPanel account, so remote artisan/composer commands are skipped."
+          echo "hotfix_app_only=${HOTFIX_APP_ONLY}"
