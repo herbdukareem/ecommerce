@@ -28,7 +28,7 @@ jobs:
       CPANEL_FTP_PASSWORD: ${{ secrets.CPANEL_FTP_PASSWORD }}
       CPANEL_FTP_PORT: ${{ secrets.CPANEL_FTP_PORT || '21' }}
       CPANEL_FTPS_LEGACY_PORT: ${{ secrets.CPANEL_FTPS_LEGACY_PORT || '990' }}
-      HOTFIX_APP_ONLY: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.hotfix_app_only == 'true' }}
+      HOTFIX_APP_ONLY: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.hotfix_app_only == 'true' }}
 
     steps:
       - name: Checkout
