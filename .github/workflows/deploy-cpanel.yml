@@ -91,6 +91,11 @@ jobs:
             **/.github/**
             **/node_modules/**
             **/tests/**
+            **/.gitignore
+            **/.gitattributes
+            **/.editorconfig
+            **/.phpunit.result.cache
+            **/.ftp-deploy-sync-state*.json
             **/storage/logs/**
             **/storage/framework/cache/**
             **/storage/framework/sessions/**
@@ -124,6 +129,11 @@ jobs:
             **/.github/**
             **/node_modules/**
             **/tests/**
+            **/.gitignore
+            **/.gitattributes
+            **/.editorconfig
+            **/.phpunit.result.cache
+            **/.ftp-deploy-sync-state*.json
             **/storage/logs/**
             **/storage/framework/cache/**
             **/storage/framework/sessions/**
@@ -157,6 +167,11 @@ jobs:
             **/.github/**
             **/node_modules/**
             **/tests/**
+            **/.gitignore
+            **/.gitattributes
+            **/.editorconfig
+            **/.phpunit.result.cache
+            **/.ftp-deploy-sync-state*.json
             **/storage/logs/**
             **/storage/framework/cache/**
             **/storage/framework/sessions/**
