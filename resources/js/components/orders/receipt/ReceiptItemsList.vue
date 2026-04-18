@@ -12,13 +12,14 @@
       <div v-for="item in items" :key="item.id" class="p-3 sm:p-4">
         <div class="flex items-center gap-3">
           <img
-            :src="item.sku?.product?.image || placeholder"
-            :alt="item.sku?.product?.title || 'Product'"
+            :src="item.image_snapshot || item.sku?.product?.image || placeholder"
+            :alt="item.product_name_snapshot || item.sku?.product?.title || 'Product'"
             class="h-12 w-12 rounded-lg border border-slate-200 object-cover"
             @error="onImageError"
           />
           <div class="min-w-0 flex-1">
-            <p class="text-sm font-medium text-primary truncate">{{ item.sku?.product?.title || 'Product' }}</p>
+            <p class="text-sm font-medium text-primary truncate">{{ item.product_name_snapshot || item.sku?.product?.title || 'Product' }}</p>
+            <p v-if="item.option_label_snapshot" class="text-[11px] text-secondary">Option: {{ item.option_label_snapshot }}</p>
             <p class="text-xs text-secondary">{{ item.quantity }} x {{ formatCurrency(item.price_snapshot || 0) }}</p>
           </div>
           <p class="text-sm font-semibold text-primary">{{ formatCurrency(itemSubtotal(item)) }}</p>

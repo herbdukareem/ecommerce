@@ -12,8 +12,12 @@ class CartItem extends Model
     protected $fillable = [
         'cart_id',
         'sku_id',
+        'product_option_id',
         'quantity',
         'price',
+        'product_name_snapshot',
+        'option_label_snapshot',
+        'image_snapshot',
     ];
 
     protected $casts = [
@@ -35,6 +39,11 @@ class CartItem extends Model
     public function sku()
     {
         return $this->belongsTo(Sku::class);
+    }
+
+    public function productOption()
+    {
+        return $this->belongsTo(Sku::class, 'product_option_id');
     }
 
     /**

@@ -10,6 +10,7 @@
 
       <div class="min-w-0 flex-1">
         <p class="text-base font-semibold text-primary leading-snug">{{ title }}</p>
+        <p v-if="optionLabel" class="mt-1 text-xs text-secondary">Option: {{ optionLabel }}</p>
         <div class="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
           <p class="text-secondary">Quantity</p>
           <p class="text-right font-medium text-primary">{{ quantity }}</p>
@@ -41,11 +42,12 @@ const props = defineProps({
 
 const placeholderImage = '/images/placeholders/product-placeholder.svg';
 
-const title = computed(() => props.item?.sku?.product?.title || 'Product');
-const imageSrc = computed(() => props.item?.sku?.product?.image || placeholderImage);
+const title = computed(() => props.item?.product_name_snapshot || props.item?.sku?.product?.title || 'Product');
+const imageSrc = computed(() => props.item?.image_snapshot || props.item?.sku?.product?.image || placeholderImage);
 const quantity = computed(() => Number(props.item?.quantity || 0));
 const unitPrice = computed(() => Number(props.item?.price_snapshot || 0));
 const subtotal = computed(() => Number(props.item?.subtotal || quantity.value * unitPrice.value));
+const optionLabel = computed(() => props.item?.option_label_snapshot || props.item?.product_option?.display_label || props.item?.sku?.display_label || null);
 
 const onImageError = (event) => {
   if (event?.target) {

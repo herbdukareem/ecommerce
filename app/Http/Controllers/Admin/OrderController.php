@@ -24,7 +24,7 @@ class OrderController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Order::with(['user', 'createdByAdmin', 'items.sku.product.images', 'shippingAddress', 'deliveryPartner', 'shippingMethod', 'shippingZone', 'city', 'area', 'dispatchTimeSlot']);
+        $query = Order::with(['user', 'createdByAdmin', 'items.sku.product.images', 'items.productOption', 'shippingAddress', 'deliveryPartner', 'shippingMethod', 'shippingZone', 'city', 'area', 'dispatchTimeSlot']);
 
         // Search
         if ($request->filled('search')) {
@@ -74,6 +74,7 @@ class OrderController extends Controller
         $order = Order::with([
             'user',
             'items.sku.product',
+            'items.productOption',
             'shippingAddress',
             'fulfillments',
             'payments',

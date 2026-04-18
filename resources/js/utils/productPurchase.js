@@ -17,6 +17,7 @@ const getActiveSkus = (product) => {
 
 export const resolveProductPurchase = (product) => {
   const skus = getActiveSkus(product);
+  const hasOptions = Boolean(product?.has_options || product?.requires_option_selection);
 
   if (!skus.length) {
     return {
@@ -40,7 +41,7 @@ export const resolveProductPurchase = (product) => {
     };
   }
 
-  if (skus.length > 1) {
+  if (hasOptions || skus.length > 1) {
     return {
       canAddDirectly: false,
       requiresSelection: true,

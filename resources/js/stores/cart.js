@@ -49,10 +49,13 @@ export const useCartStore = defineStore('cart', {
       }
     },
 
-    async addItem(skuId, quantity = 1) {
+    async addItem(itemOrSkuId, quantity = 1) {
       try {
         this.loading = true;
-        await axios.post('/api/cart/items', { sku_id: skuId, quantity });
+        const payload = typeof itemOrSkuId === 'object' && itemOrSkuId !== null
+          ? { ...itemOrSkuId, quantity }
+          : { sku_id: itemOrSkuId, quantity };
+        await axios.post('/api/cart/items', payload);
         await this.loadCart();
         return { success: true };
       } catch (error) {

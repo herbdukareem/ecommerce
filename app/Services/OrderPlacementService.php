@@ -22,7 +22,7 @@ class OrderPlacementService
 
     public function placeCustomerCartOrder(User $customer, array $payload): Order
     {
-        $cart = Cart::with(['items.sku', 'coupon'])->where('user_id', $customer->id)->first();
+        $cart = Cart::with(['items.sku.product', 'coupon'])->where('user_id', $customer->id)->first();
         if (!$cart || $cart->items->isEmpty()) {
             throw ValidationException::withMessages([
                 'cart' => ['Cart is empty.'],
@@ -86,8 +86,13 @@ class OrderPlacementService
                 OrderItem::create([
                     'order_id' => $order->id,
                     'sku_id' => $cartItem->sku_id,
+                    'product_option_id' => $cartItem->sku_id,
+                    'product_id' => $cartItem->sku?->product_id,
                     'quantity' => $cartItem->quantity,
                     'price_snapshot' => $cartItem->price,
+                    'product_name_snapshot' => $cartItem->product_name_snapshot ?: $cartItem->sku?->product?->title,
+                    'option_label_snapshot' => $cartItem->option_label_snapshot,
+                    'image_snapshot' => $cartItem->image_snapshot ?: $cartItem->sku?->product?->image,
                     'weight_snapshot' => (float) ($cartItem->sku->weight ?? 0),
                     'length_snapshot' => (float) ($cartItem->sku->length ?? 0),
                     'width_snapshot' => (float) ($cartItem->sku->width ?? 0),
@@ -123,7 +128,7 @@ class OrderPlacementService
         $slot = DispatchTimeSlot::query()->findOrFail($payload['dispatch_time_slot_id']);
 
         $skus = Sku::query()
-            ->with('stocks')
+            ->with(['stocks', 'product'])
             ->whereIn('id', collect($payload['items'])->pluck('sku_id')->unique()->values())
             ->get()
             ->keyBy('id');
@@ -187,8 +192,13 @@ class OrderPlacementService
                 OrderItem::create([
                     'order_id' => $order->id,
                     'sku_id' => $sku->id,
+                    'product_option_id' => $sku->id,
+                    'product_id' => $sku->product_id,
                     'quantity' => (int) $line['quantity'],
                     'price_snapshot' => (float) $sku->price,
+                    'product_name_snapshot' => $sku->product?->title,
+                    'option_label_snapshot' => $sku->display_label,
+                    'image_snapshot' => $sku->image_path ?: $sku->product?->image,
                     'weight_snapshot' => (float) ($sku->weight ?? 0),
                     'length_snapshot' => (float) ($sku->length ?? 0),
                     'width_snapshot' => (float) ($sku->width ?? 0),

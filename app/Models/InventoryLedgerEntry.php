@@ -12,6 +12,7 @@ class InventoryLedgerEntry extends Model
     protected $fillable = [
         'product_id',
         'variant_id',
+        'product_option_id',
         'movement_type',
         'quantity_in',
         'quantity_out',
@@ -37,5 +38,10 @@ class InventoryLedgerEntry extends Model
     public function sku()
     {
         return $this->belongsTo(Sku::class, 'variant_id');
+    }
+
+    public function productOption()
+    {
+        return $this->belongsTo(Sku::class, 'product_option_id');
     }
 }

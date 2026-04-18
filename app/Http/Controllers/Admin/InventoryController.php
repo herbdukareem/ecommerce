@@ -63,7 +63,7 @@ class InventoryController extends Controller
 
     public function ledger(Request $request)
     {
-        $query = InventoryLedgerEntry::query()->with(['product:id,title', 'sku:id,sku_code']);
+        $query = InventoryLedgerEntry::query()->with(['product:id,title', 'sku:id,sku_code,option_label', 'productOption:id,sku_code,option_label']);
 
         if ($request->filled('product_id')) {
             $query->where('product_id', (int) $request->input('product_id'));
@@ -71,6 +71,10 @@ class InventoryController extends Controller
 
         if ($request->filled('sku_id')) {
             $query->where('variant_id', (int) $request->input('sku_id'));
+        }
+
+        if ($request->filled('product_option_id')) {
+            $query->where('product_option_id', (int) $request->input('product_option_id'));
         }
 
         if ($request->filled('movement_type')) {
@@ -253,6 +257,7 @@ class InventoryController extends Controller
                 'sku_code' => $sku->sku_code,
                 'product_id' => $sku->product_id,
                 'product_title' => $sku->product?->title,
+                'option_label' => $sku->display_label,
                 'available_stock' => $sku->stocks->sum(fn ($stock) => (int) $stock->on_hand - (int) $stock->reserved),
             ];
         });

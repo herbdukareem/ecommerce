@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Cart;
 use App\Models\CartItem;
 use App\Models\Coupon;
+use App\Models\Product;
 use App\Models\Sku;
 use Illuminate\Http\Request;
 
@@ -49,30 +50,42 @@ class CartController extends Controller
         $cart = $this->getCart($request)->load(['coupon']);
 
         $items = $cart->items()
-            ->with(['sku.product.images', 'sku.stocks'])
+            ->with(['sku.product.images', 'sku.stocks', 'productOption'])
             ->get()
             ->map(function ($item) {
                 $sku = $item->sku;
+                if (!$sku || !$sku->product) {
+                    return null;
+                }
+
                 $availableStock = $sku->stocks->sum(function ($stock) {
                     return $stock->on_hand - $stock->reserved;
                 });
+                if ($availableStock <= 0 && (int) ($sku->stock_quantity ?? 0) > 0) {
+                    $availableStock = (int) $sku->stock_quantity;
+                }
+
+                $unitPrice = (float) ($item->price ?? $sku->price);
+                $optionLabel = $item->option_label_snapshot ?: ($item->productOption?->display_label ?? $sku->display_label ?? null);
 
                 return [
                     'id' => $item->id,
                     'sku_id' => $sku->id,
+                    'product_option_id' => $item->product_option_id,
                     'sku_code' => $sku->sku_code,
                     'product_id' => $sku->product->id,
-                    'product_title' => $sku->product->title,
+                    'product_title' => $item->product_name_snapshot ?: $sku->product->title,
                     'product_slug' => $sku->product->slug,
-                    'product_image' => $sku->product->image,
+                    'product_image' => $item->image_snapshot ?: $sku->product->image,
                     'product_images' => $sku->product->images()->orderBy('order')->get(['id', 'image_url', 'image_path', 'is_primary', 'order']),
-                    'price' => $sku->price,
+                    'option_label' => $optionLabel,
+                    'price' => $unitPrice,
                     'quantity' => $item->quantity,
-                    'subtotal' => $sku->price * $item->quantity,
+                    'subtotal' => $unitPrice * $item->quantity,
                     'available_stock' => $availableStock,
                     'in_stock' => $availableStock >= $item->quantity,
                 ];
-            });
+            })->filter()->values();
 
         $subtotal = (float) $items->sum('subtotal');
         $discount = (float) ($cart->coupon_discount ?? 0);
@@ -99,20 +112,81 @@ class CartController extends Controller
      */
     public function addItem(Request $request)
     {
-        $request->validate([
-            'sku_id' => 'required|exists:skus,id',
+        $validated = $request->validate([
+            'product_id' => 'nullable|exists:products,id',
+            'sku_id' => 'nullable|exists:skus,id',
             'quantity' => 'required|integer|min:1|max:999',
         ]);
 
+        if (!$request->filled('product_id') && !$request->filled('sku_id')) {
+            return response()->json([
+                'message' => 'Either product_id or sku_id is required',
+            ], 422);
+        }
+
         $cart = $this->getCart($request);
-        $sku = Sku::with('stocks')->findOrFail($request->sku_id);
+
+        $product = null;
+        $sku = null;
+
+        if ($request->filled('product_id')) {
+            $product = Product::with(['skus.stocks'])->findOrFail((int) $validated['product_id']);
+        }
+
+        if ($request->filled('sku_id')) {
+            $sku = Sku::with(['product', 'stocks'])->findOrFail((int) $validated['sku_id']);
+            $product = $product ?: $sku->product;
+        }
+
+        if (!$product) {
+            return response()->json([
+                'message' => 'Invalid product selected',
+            ], 422);
+        }
+
+        if ($sku && (int) $sku->product_id !== (int) $product->id) {
+            return response()->json([
+                'message' => 'Selected option does not belong to selected product',
+            ], 422);
+        }
+
+        if (!$sku) {
+            $sku = $product->skus()
+                ->where('active', true)
+                ->orderBy('sort_order')
+                ->orderBy('id')
+                ->first();
+            $sku?->loadMissing('stocks');
+        }
+
+        if (!$sku) {
+            return response()->json([
+                'message' => 'No purchasable option is available for this product',
+            ], 422);
+        }
+
+        if ($product->has_options && !$request->filled('sku_id')) {
+            return response()->json([
+                'message' => 'Please select a product option before adding to cart',
+            ], 422);
+        }
+
+        if (!(bool) $sku->active) {
+            return response()->json([
+                'message' => 'Selected option is inactive',
+            ], 422);
+        }
 
         // Check stock availability
         $availableStock = $sku->stocks->sum(function ($stock) {
             return $stock->on_hand - $stock->reserved;
         });
 
-        if ($availableStock < $request->quantity) {
+        if ($availableStock <= 0 && (int) ($sku->stock_quantity ?? 0) > 0) {
+            $availableStock = (int) $sku->stock_quantity;
+        }
+
+        if ($availableStock < $validated['quantity']) {
             return response()->json([
                 'message' => 'Insufficient stock available',
                 'available' => $availableStock,
@@ -123,7 +197,7 @@ class CartController extends Controller
         $cartItem = $cart->items()->where('sku_id', $sku->id)->first();
 
         if ($cartItem) {
-            $newQuantity = $cartItem->quantity + $request->quantity;
+            $newQuantity = $cartItem->quantity + $validated['quantity'];
 
             if ($availableStock < $newQuantity) {
                 return response()->json([
@@ -137,8 +211,12 @@ class CartController extends Controller
         } else {
             $cartItem = $cart->items()->create([
                 'sku_id' => $sku->id,
-                'quantity' => $request->quantity,
+                'product_option_id' => $product->has_options ? $sku->id : null,
+                'quantity' => $validated['quantity'],
                 'price' => $sku->price,
+                'product_name_snapshot' => $product->title,
+                'option_label_snapshot' => $product->has_options ? $sku->display_label : null,
+                'image_snapshot' => $sku->image_path ?: $product->image,
             ]);
         }
 
@@ -165,6 +243,9 @@ class CartController extends Controller
         $availableStock = $cartItem->sku->stocks->sum(function ($stock) {
             return $stock->on_hand - $stock->reserved;
         });
+        if ($availableStock <= 0 && (int) ($cartItem->sku->stock_quantity ?? 0) > 0) {
+            $availableStock = (int) $cartItem->sku->stock_quantity;
+        }
 
         if ($availableStock < $request->quantity) {
             return response()->json([
@@ -317,8 +398,12 @@ class CartController extends Controller
             } else {
                 $userCart->items()->create([
                     'sku_id' => $guestItem->sku_id,
+                    'product_option_id' => $guestItem->product_option_id,
                     'quantity' => $guestItem->quantity,
                     'price' => $guestItem->price,
+                    'product_name_snapshot' => $guestItem->product_name_snapshot,
+                    'option_label_snapshot' => $guestItem->option_label_snapshot,
+                    'image_snapshot' => $guestItem->image_snapshot,
                 ]);
             }
         }

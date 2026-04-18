@@ -93,6 +93,10 @@
                 <p class="text-gray-900 mt-1 font-semibold">₦{{ formatPrice(product.price || product.base_price) }}</p>
               </div>
               <div>
+                <label class="text-sm font-medium text-gray-600">Option Mode</label>
+                <p class="text-gray-900 mt-1">{{ product.has_options ? 'Enabled' : 'Simple Product' }}</p>
+              </div>
+              <div>
                 <label class="text-sm font-medium text-gray-600">Status</label>
                 <span
                   :class="{
@@ -126,18 +130,20 @@
                 <thead class="bg-gray-50">
                   <tr>
                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">SKU Code</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Option</th>
                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Price</th>
                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Stock</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Weight</th>
                   </tr>
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-200">
                   <tr v-for="sku in product.skus" :key="sku.id">
                     <td class="px-4 py-3 text-sm text-gray-900">{{ sku.sku_code }}</td>
-                    <td class="px-4 py-3 text-sm text-gray-900">{{ sku.attributes?.name || 'Default' }}</td>
+                    <td class="px-4 py-3 text-sm text-gray-900">{{ sku.option_label || sku.display_label || sku.attributes?.name || 'Default' }}</td>
                     <td class="px-4 py-3 text-sm text-gray-900">₦{{ formatPrice(sku.price) }}</td>
                     <td class="px-4 py-3 text-sm text-gray-900">{{ sku.stock_quantity || 0 }}</td>
+                    <td class="px-4 py-3 text-sm text-gray-900">{{ sku.active === false ? 'Inactive' : 'Active' }}</td>
                     <td class="px-4 py-3 text-sm text-gray-900">{{ sku.weight || 0 }}kg</td>
                   </tr>
                 </tbody>

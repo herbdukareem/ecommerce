@@ -22,7 +22,7 @@ class OrderController extends Controller
     {
         $user = $request->user();
 
-        $query = Order::with(['items.sku.product.images', 'shippingAddress', 'payments', 'deliveryPartner', 'shippingMethod', 'shippingZone', 'city', 'area', 'dispatchTimeSlot'])
+        $query = Order::with(['items.sku.product.images', 'items.productOption', 'shippingAddress', 'payments', 'deliveryPartner', 'shippingMethod', 'shippingZone', 'city', 'area', 'dispatchTimeSlot'])
             ->where('user_id', $user->id);
 
         if ($request->filled('status')) {
@@ -47,6 +47,7 @@ class OrderController extends Controller
 
         $order = Order::with([
             'items.sku.product',
+            'items.productOption',
             'shippingAddress',
             'payments',
             'fulfillments.warehouse',
@@ -104,7 +105,7 @@ class OrderController extends Controller
         $user = $request->user();
 
         // Get orders that contain items from this vendor's products
-        $query = Order::with(['items.sku.product', 'shippingAddress', 'user', 'deliveryPartner', 'shippingMethod', 'shippingZone'])
+        $query = Order::with(['items.sku.product', 'items.productOption', 'shippingAddress', 'user', 'deliveryPartner', 'shippingMethod', 'shippingZone'])
             ->whereHas('items.sku.product', function ($q) use ($user) {
                 $q->where('vendor_id', $user->id);
             });

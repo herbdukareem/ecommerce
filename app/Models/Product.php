@@ -11,7 +11,11 @@ class Product extends Model
 
     protected $fillable = [
         'vendor_id', 'title', 'slug', 'description', 'base_price', 'status',
-        'name', 'price', 'image', // New fields for admin product management
+        'name', 'price', 'image', 'has_options', // New fields for admin product management
+    ];
+
+    protected $casts = [
+        'has_options' => 'boolean',
     ];
 
     /**
@@ -28,6 +32,17 @@ class Product extends Model
     public function skus()
     {
         return $this->hasMany(Sku::class);
+    }
+
+    /**
+     * Active product options sorted for customer display.
+     */
+    public function productOptions()
+    {
+        return $this->hasMany(Sku::class)
+            ->where('active', true)
+            ->orderBy('sort_order')
+            ->orderBy('id');
     }
 
     /**

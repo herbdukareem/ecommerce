@@ -4,7 +4,9 @@
       <span class="text-gray-400">Image</span>
     </div>
     <h3 class="font-semibold mb-1 truncate">{{ product.title }}</h3>
-    <p class="text-gray-600">Starting at ₦{{ product.base_price }}</p>
+    <p class="text-gray-600">
+      {{ product.has_options ? `From ₦${product.display_price || product.base_price}` : `Starting at ₦${product.base_price}` }}
+    </p>
   </router-link>
 </template>
 

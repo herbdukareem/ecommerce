@@ -56,11 +56,84 @@ class CartTest extends TestCase
         $commerce = $this->makeProductWithStock($vendor);
 
         $commerce['sku']->stocks()->update(['on_hand' => 0, 'reserved' => 0]);
+        $commerce['sku']->update(['stock_quantity' => 0]);
 
         Sanctum::actingAs($customer);
 
         $this->postJson('/api/cart/items', ['sku_id' => $commerce['sku']->id, 'quantity' => 1])
             ->assertStatus(422)
             ->assertJsonPath('message', 'Insufficient stock available');
+    }
+
+    public function test_simple_product_add_to_cart_accepts_quantity_greater_than_one(): void
+    {
+        $customer = $this->makeUserWithRole('Customer', 'customer-cart-qty-simple@test.com');
+        $vendor = $this->makeUserWithRole('Vendor', 'vendor-cart-qty-simple@test.com');
+        $commerce = $this->makeProductWithStock($vendor);
+
+        Sanctum::actingAs($customer);
+
+        $this->postJson('/api/cart/items', [
+            'product_id' => $commerce['product']->id,
+            'quantity' => 3,
+        ])->assertCreated();
+
+        $this->getJson('/api/cart')
+            ->assertOk()
+            ->assertJsonPath('items.0.quantity', 3);
+    }
+
+    public function test_quantity_below_one_is_rejected(): void
+    {
+        $customer = $this->makeUserWithRole('Customer', 'customer-cart-qty-min@test.com');
+        $vendor = $this->makeUserWithRole('Vendor', 'vendor-cart-qty-min@test.com');
+        $commerce = $this->makeProductWithStock($vendor);
+
+        Sanctum::actingAs($customer);
+
+        $this->postJson('/api/cart/items', [
+            'product_id' => $commerce['product']->id,
+            'quantity' => 0,
+        ])->assertStatus(422)
+            ->assertJsonValidationErrors(['quantity']);
+    }
+
+    public function test_quantity_above_stock_is_rejected(): void
+    {
+        $customer = $this->makeUserWithRole('Customer', 'customer-cart-qty-over-stock@test.com');
+        $vendor = $this->makeUserWithRole('Vendor', 'vendor-cart-qty-over-stock@test.com');
+        $commerce = $this->makeProductWithStock($vendor);
+
+        Sanctum::actingAs($customer);
+
+        $this->postJson('/api/cart/items', [
+            'product_id' => $commerce['product']->id,
+            'quantity' => 999,
+        ])->assertStatus(422)
+            ->assertJsonPath('message', 'Insufficient stock available');
+    }
+
+    public function test_existing_cart_line_merges_quantity_correctly(): void
+    {
+        $customer = $this->makeUserWithRole('Customer', 'customer-cart-qty-merge@test.com');
+        $vendor = $this->makeUserWithRole('Vendor', 'vendor-cart-qty-merge@test.com');
+        $commerce = $this->makeProductWithStock($vendor);
+
+        Sanctum::actingAs($customer);
+
+        $this->postJson('/api/cart/items', [
+            'product_id' => $commerce['product']->id,
+            'quantity' => 2,
+        ])->assertCreated();
+
+        $this->postJson('/api/cart/items', [
+            'product_id' => $commerce['product']->id,
+            'quantity' => 3,
+        ])->assertCreated();
+
+        $this->getJson('/api/cart')
+            ->assertOk()
+            ->assertJsonCount(1, 'items')
+            ->assertJsonPath('items.0.quantity', 5);
     }
 }

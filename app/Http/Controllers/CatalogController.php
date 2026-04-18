@@ -175,12 +175,12 @@ class CatalogController extends Controller
      */
     public function categories()
     {
-        $categories = Cache::remember('categories_tree', 3600, function () {
-            return Category::with('children')
+        // $categories = Cache::remember('categories_tree', 3600, function () {
+            $categories = Category::with('children')
                 ->whereNull('parent_id')
                 ->withCount('products')
                 ->get();
-        });
+        // });
 
         return response()->json($categories);
     }
@@ -228,7 +228,7 @@ class CatalogController extends Controller
     {
         $activeSkus = $product->skus->filter(function ($sku) {
             return (bool) ($sku->active ?? true);
-        })->values();
+        })->sortBy('sort_order')->values();
 
         $inStockSkus = $activeSkus->filter(function ($sku) {
             $stockFromWarehouses = $sku->stocks->sum(function ($stock) {
@@ -242,8 +242,18 @@ class CatalogController extends Controller
             return $available > 0;
         })->values();
 
-        $product->setAttribute('default_sku_id', optional($inStockSkus->first())->id);
-        $product->setAttribute('has_variants', $activeSkus->count() > 1);
+        $minOptionPrice = $activeSkus->min('price');
+        $maxOptionPrice = $activeSkus->max('price');
+        $hasOptions = (bool) ($product->has_options ?? false);
+
+        $product->setAttribute('default_sku_id', $hasOptions ? null : optional($inStockSkus->first())->id);
+        $product->setAttribute('has_variants', $hasOptions);
+        $product->setAttribute('has_options', $hasOptions);
+        $product->setAttribute('requires_option_selection', $hasOptions);
+        $product->setAttribute('option_count', $activeSkus->count());
+        $product->setAttribute('min_option_price', $minOptionPrice !== null ? (float) $minOptionPrice : null);
+        $product->setAttribute('max_option_price', $maxOptionPrice !== null ? (float) $maxOptionPrice : null);
+        $product->setAttribute('display_price', $hasOptions ? ($minOptionPrice ?? $product->base_price) : $product->base_price);
         $product->setAttribute('is_in_stock', $inStockSkus->isNotEmpty());
 
         return $product;

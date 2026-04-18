@@ -190,6 +190,7 @@ class InventoryService
             $this->recordLedger([
                 'product_id' => $product->id,
                 'variant_id' => $sku->id,
+                'product_option_id' => $sku->id,
                 'movement_type' => 'stock_addition',
                 'quantity_in' => $quantity,
                 'quantity_out' => 0,
@@ -218,6 +219,7 @@ class InventoryService
             $this->recordLedger([
                 'product_id' => $batch->product_id,
                 'variant_id' => $batch->variant_id,
+                'product_option_id' => $batch->variant_id,
                 'movement_type' => 'expiry_update',
                 'quantity_in' => 0,
                 'quantity_out' => 0,
@@ -288,6 +290,7 @@ class InventoryService
             $this->recordLedger([
                 'product_id' => $sku->product_id,
                 'variant_id' => $sku->id,
+                'product_option_id' => $sku->id,
                 'movement_type' => 'order_deduction',
                 'quantity_in' => 0,
                 'quantity_out' => $take,

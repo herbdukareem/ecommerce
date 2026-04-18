@@ -81,7 +81,9 @@
               <p class="text-sm text-secondary mb-4 line-clamp-2">{{ product.description || 'No description available.' }}</p>
 
               <div class="flex items-center justify-between gap-3">
-                <span class="text-lg font-bold text-primary">{{ formatCurrency(product.base_price) }}</span>
+                <span class="text-lg font-bold text-primary">
+                  {{ product.has_options ? `From ${formatCurrency(product.display_price || product.base_price)}` : formatCurrency(product.base_price) }}
+                </span>
                 <Button
                   variant="primary"
                   size="sm"

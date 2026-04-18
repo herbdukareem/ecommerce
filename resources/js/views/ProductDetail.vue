@@ -45,9 +45,45 @@
               <span class="text-2xl font-bold text-primary">{{ formatCurrency(displayPrice) }}</span>
             </div>
 
+            <div class="mb-4" v-if="product.has_options || (product.skus?.length || 0) > 1">
+              <p class="text-sm font-semibold text-primary mb-2">Select Option</p>
+              <VariantSelector :product="product" :model-value="selectedSku" @select="selectSku" />
+            </div>
+
             <div class="mb-4">
-              <p class="text-sm font-semibold text-primary mb-2">Select Variant</p>
-              <VariantSelector :product="product" @select="selectSku" />
+              <p class="text-sm font-semibold text-primary mb-2">Quantity</p>
+              <div class="inline-flex w-full max-w-xs items-center rounded-lg border border-DEFAULT bg-base overflow-hidden">
+                <button
+                  type="button"
+                  class="h-11 w-12 flex items-center justify-center text-primary transition disabled:opacity-40 disabled:cursor-not-allowed hover:bg-primary/5"
+                  :disabled="quantity <= 1"
+                  aria-label="Decrease quantity"
+                  @click="decrementQuantity"
+                >
+                  <i class="mdi mdi-minus text-lg"></i>
+                </button>
+
+                <input
+                  v-model="quantityInput"
+                  type="number"
+                  min="1"
+                  inputmode="numeric"
+                  class="h-11 w-full text-center bg-transparent text-primary font-semibold outline-none border-x border-DEFAULT"
+                  aria-label="Quantity"
+                  @blur="sanitizeQuantity"
+                  @keydown.enter.prevent="sanitizeQuantity"
+                />
+
+                <button
+                  type="button"
+                  class="h-11 w-12 flex items-center justify-center text-primary transition disabled:opacity-40 disabled:cursor-not-allowed hover:bg-primary/5"
+                  :disabled="!canIncrement"
+                  aria-label="Increase quantity"
+                  @click="incrementQuantity"
+                >
+                  <i class="mdi mdi-plus text-lg"></i>
+                </button>
+              </div>
             </div>
 
             <div class="mb-6 text-sm" :class="inStock ? 'text-success' : 'text-danger'">
@@ -58,11 +94,20 @@
               variant="primary"
               icon="cart-plus"
               class="w-full"
-              :disabled="!selectedSku || !inStock"
+              :disabled="!canAddToCart || cart.loading"
               @click="addToCart"
             >
               Add to Cart
             </Button>
+            <p v-if="requiresOptionSelection && !selectedSku" class="mt-2 text-xs text-danger">
+              Please choose an option before adding to cart.
+            </p>
+            <p v-else-if="quantityAdjustedMessage" class="mt-2 text-xs text-warning">
+              {{ quantityAdjustedMessage }}
+            </p>
+            <p v-else-if="stockHintText" class="mt-2 text-xs text-secondary">
+              {{ stockHintText }}
+            </p>
           </Card>
         </div>
       </div>
@@ -86,19 +131,115 @@ const route = useRoute();
 const product = ref(null);
 const loading = ref(true);
 const selectedSku = ref(null);
+const quantity = ref(1);
+const quantityInput = ref('1');
 const errorMessage = ref('');
+const quantityAdjustedMessage = ref('');
 const activeImage = ref('/images/placeholders/product-placeholder.svg');
 const cart = useCartStore();
 const settingsStore = useSettingsStore();
 const toast = inject('toast');
 
+const requiresOptionSelection = computed(() => {
+  if (!product.value) return false;
+  return Boolean(product.value.has_options || (product.value.skus?.length || 0) > 1);
+});
+
 const displayPrice = computed(() => selectedSku.value?.price ?? product.value?.base_price ?? 0);
-const inStock = computed(() => {
-  if (!selectedSku.value) return false;
-  if (Array.isArray(selectedSku.value.stocks) && selectedSku.value.stocks.length > 0) {
-    return selectedSku.value.stocks.some(stock => (stock.on_hand - stock.reserved) > 0);
+const getSkuAvailableStock = (sku) => {
+  if (!sku) {
+    return null;
   }
+
+  if (Array.isArray(sku.stocks) && sku.stocks.length > 0) {
+    return sku.stocks.reduce((sum, stock) => sum + Number(stock.on_hand || 0) - Number(stock.reserved || 0), 0);
+  }
+
+  if (Number.isFinite(Number(sku.stock_quantity))) {
+    return Number(sku.stock_quantity);
+  }
+
+  return null;
+};
+
+const fallbackSimpleSku = computed(() => {
+  if (!product.value?.skus?.length) {
+    return null;
+  }
+
+  return product.value.skus.find((sku) => sku?.active !== false) || product.value.skus[0] || null;
+});
+
+const effectiveSku = computed(() => {
+  if (selectedSku.value) {
+    return selectedSku.value;
+  }
+
+  if (!requiresOptionSelection.value) {
+    return fallbackSimpleSku.value;
+  }
+
+  return null;
+});
+
+const maxAvailableStock = computed(() => {
+  const stock = getSkuAvailableStock(effectiveSku.value);
+  if (stock === null || Number.isNaN(stock)) {
+    return null;
+  }
+  return Math.max(0, Math.floor(stock));
+});
+
+const inStock = computed(() => {
+  if (!effectiveSku.value) {
+    return false;
+  }
+
+  const stock = maxAvailableStock.value;
+  return stock === null ? true : stock > 0;
+});
+
+const quantityIsValid = computed(() => {
+  const value = Number(quantity.value);
+  if (!Number.isInteger(value) || value < 1) {
+    return false;
+  }
+
+  if (maxAvailableStock.value !== null && value > maxAvailableStock.value) {
+    return false;
+  }
+
   return true;
+});
+
+const canIncrement = computed(() => {
+  if (maxAvailableStock.value === null) {
+    return true;
+  }
+  return quantity.value < maxAvailableStock.value;
+});
+
+const canAddToCart = computed(() => {
+  if (requiresOptionSelection.value && !selectedSku.value) {
+    return false;
+  }
+  return !!effectiveSku.value && inStock.value && quantityIsValid.value;
+});
+
+const stockHintText = computed(() => {
+  if (maxAvailableStock.value === null) {
+    return null;
+  }
+
+  if (maxAvailableStock.value <= 0) {
+    return null;
+  }
+
+  if (maxAvailableStock.value <= 5) {
+    return `Only ${maxAvailableStock.value} left in stock.`;
+  }
+
+  return `${maxAvailableStock.value} available.`;
 });
 const galleryImages = computed(() => {
   const media = normalizeProductMedia(product.value);
@@ -114,7 +255,10 @@ async function fetchProduct(slug) {
     product.value = data;
     const media = normalizeProductMedia(data);
     activeImage.value = media.primaryImage || media.placeholder;
-    selectedSku.value = data?.skus?.[0] || null;
+    selectedSku.value = requiresOptionSelection.value ? null : (data?.skus?.[0] || null);
+    quantity.value = 1;
+    quantityInput.value = '1';
+    quantityAdjustedMessage.value = '';
     errorMessage.value = '';
   } catch (error) {
     product.value = null;
@@ -139,11 +283,52 @@ function onThumbnailError(event) {
 
 function selectSku(sku) {
   selectedSku.value = sku;
+  sanitizeQuantity();
+}
+
+function sanitizeQuantity() {
+  quantityAdjustedMessage.value = '';
+
+  const parsed = Number.parseInt(String(quantityInput.value), 10);
+  let normalized = Number.isInteger(parsed) ? parsed : 1;
+  normalized = Math.max(1, normalized);
+
+  if (maxAvailableStock.value !== null && maxAvailableStock.value > 0 && normalized > maxAvailableStock.value) {
+    normalized = maxAvailableStock.value;
+    quantityAdjustedMessage.value = `Quantity adjusted to available stock (${maxAvailableStock.value}).`;
+  }
+
+  quantity.value = normalized;
+  quantityInput.value = String(normalized);
+}
+
+function incrementQuantity() {
+  quantityInput.value = String(Number(quantity.value || 1) + 1);
+  sanitizeQuantity();
+}
+
+function decrementQuantity() {
+  quantityInput.value = String(Math.max(1, Number(quantity.value || 1) - 1));
+  sanitizeQuantity();
 }
 
 async function addToCart() {
-  if (!selectedSku.value || !inStock.value) return;
-  const result = await cart.addItem(selectedSku.value.id, 1);
+  sanitizeQuantity();
+
+  if (requiresOptionSelection.value && !selectedSku.value) {
+    toast?.warning('Select an option before adding to cart.');
+    return;
+  }
+
+  if (!effectiveSku.value || !inStock.value || !quantityIsValid.value) {
+    return;
+  }
+
+  const payload = requiresOptionSelection.value
+    ? { product_id: product.value.id, sku_id: selectedSku.value.id }
+    : { product_id: product.value.id };
+
+  const result = await cart.addItem(payload, quantity.value);
   if (result.success) {
     toast?.success('Added to cart');
   } else {
@@ -157,5 +342,9 @@ onMounted(() => {
 
 watch(() => route.params.slug, (slug) => {
   fetchProduct(slug);
+});
+
+watch(maxAvailableStock, () => {
+  sanitizeQuantity();
 });
 </script>

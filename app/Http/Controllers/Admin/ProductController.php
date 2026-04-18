@@ -68,6 +68,7 @@ class ProductController extends Controller
             'description' => 'nullable|string',
             'price' => 'required|numeric|min:0',
             'status' => 'required|in:active,draft,archived',
+            'has_options' => 'sometimes|boolean',
             'category_id' => 'required|exists:categories,id',
             'sku' => 'nullable|string|max:100',
             'images' => 'nullable|array',
@@ -89,6 +90,7 @@ class ProductController extends Controller
                 'base_price' => $data['price'], // Keep base_price for backward compatibility
                 'price' => $data['price'],
                 'status' => $data['status'],
+                'has_options' => (bool) ($data['has_options'] ?? false),
             ]);
 
             // Attach category (single category)
@@ -115,29 +117,52 @@ class ProductController extends Controller
                 }
             }
 
-            // Handle variants
-            $variants = $request->filled('variants') ? json_decode($data['variants'], true) : [];
+            // Handle product options / variants
+            $variants = $this->decodeVariants($request->input('variants'));
+            $this->assertUniqueVariantLabels($variants);
+            if ((bool) $product->has_options && empty($variants)) {
+                abort(422, 'At least one product option is required when has_options is enabled.');
+            }
 
             if (!empty($variants)) {
-                foreach ($variants as $variant) {
+                foreach ($variants as $index => $variant) {
+                    $label = (string) ($variant['label'] ?? $variant['name'] ?? 'Option ' . ($index + 1));
+                    $skuCode = (string) ($variant['sku'] ?? ('SKU-' . strtoupper(Str::random(8))));
+
                     Sku::create([
                         'product_id' => $product->id,
-                        'sku_code' => $variant['sku'] ?? 'SKU-' . strtoupper(Str::random(8)),
+                        'sku_code' => $skuCode,
+                        'option_label' => $label,
+                        'option_code' => $variant['option_code'] ?? null,
                         'price' => $variant['price'] ?? $data['price'],
-                        'stock_quantity' => $variant['stock'] ?? 0,
+                        'compare_at_price' => $variant['compare_at_price'] ?? null,
+                        'cost' => $variant['cost_price'] ?? 0,
+                        'cost_price' => $variant['cost_price'] ?? null,
+                        'stock_quantity' => max(0, (int) ($variant['stock_quantity'] ?? $variant['stock'] ?? 0)),
+                        'low_stock_threshold' => isset($variant['low_stock_threshold']) ? (int) $variant['low_stock_threshold'] : null,
                         'weight' => $variant['weight'] ?? 0,
-                        'active' => true,
-                        'attributes' => json_encode(['name' => $variant['name'] ?? '']),
+                        'unit' => $variant['unit'] ?? null,
+                        'image_path' => $variant['image_path'] ?? null,
+                        'sort_order' => isset($variant['sort_order']) ? (int) $variant['sort_order'] : $index,
+                        'active' => isset($variant['is_active']) ? (bool) $variant['is_active'] : true,
+                        'attributes' => ['name' => $label],
+                        'metadata' => $variant['metadata'] ?? null,
+                        'created_by' => $request->user()->id,
+                        'updated_by' => $request->user()->id,
                     ]);
                 }
             } else {
-                // Create default SKU if no variants provided
+                // Create default SKU for simple products.
                 Sku::create([
                     'product_id' => $product->id,
                     'sku_code' => $data['sku'] ?? 'SKU-' . strtoupper(Str::random(8)),
+                    'option_label' => null,
                     'price' => $data['price'],
                     'stock_quantity' => 0,
+                    'sort_order' => 0,
                     'active' => true,
+                    'created_by' => $request->user()->id,
+                    'updated_by' => $request->user()->id,
                 ]);
             }
 
@@ -173,6 +198,7 @@ class ProductController extends Controller
             'description' => 'nullable|string',
             'price' => 'sometimes|numeric|min:0',
             'status' => 'sometimes|in:active,draft,archived',
+            'has_options' => 'sometimes|boolean',
             'category_id' => 'sometimes|exists:categories,id',
             'sku' => 'nullable|string|max:100',
             'images' => 'nullable|array',
@@ -196,6 +222,9 @@ class ProductController extends Controller
             }
             if (isset($data['status'])) {
                 $updateData['status'] = $data['status'];
+            }
+            if (array_key_exists('has_options', $data)) {
+                $updateData['has_options'] = (bool) $data['has_options'];
             }
 
             $product->update($updateData);
@@ -254,21 +283,39 @@ class ProductController extends Controller
 
             // Handle variants update
             if ($request->filled('variants')) {
-                $variants = json_decode($data['variants'], true);
+                $variants = $this->decodeVariants($data['variants']);
+                $this->assertUniqueVariantLabels($variants);
+
+                if ((bool) ($updateData['has_options'] ?? $product->has_options) && empty($variants)) {
+                    abort(422, 'At least one product option is required when has_options is enabled.');
+                }
 
                 // Delete existing SKUs and create new ones
                 $product->skus()->delete();
 
                 if (!empty($variants)) {
-                    foreach ($variants as $variant) {
+                    foreach ($variants as $index => $variant) {
+                        $label = (string) ($variant['label'] ?? $variant['name'] ?? 'Option ' . ($index + 1));
                         Sku::create([
                             'product_id' => $product->id,
                             'sku_code' => $variant['sku'] ?? 'SKU-' . strtoupper(Str::random(8)),
+                            'option_label' => $label,
+                            'option_code' => $variant['option_code'] ?? null,
                             'price' => $variant['price'] ?? $data['price'],
-                            'stock_quantity' => $variant['stock'] ?? 0,
+                            'compare_at_price' => $variant['compare_at_price'] ?? null,
+                            'cost' => $variant['cost_price'] ?? 0,
+                            'cost_price' => $variant['cost_price'] ?? null,
+                            'stock_quantity' => max(0, (int) ($variant['stock_quantity'] ?? $variant['stock'] ?? 0)),
+                            'low_stock_threshold' => isset($variant['low_stock_threshold']) ? (int) $variant['low_stock_threshold'] : null,
                             'weight' => $variant['weight'] ?? 0,
-                            'active' => true,
-                            'attributes' => json_encode(['name' => $variant['name'] ?? '']),
+                            'unit' => $variant['unit'] ?? null,
+                            'image_path' => $variant['image_path'] ?? null,
+                            'sort_order' => isset($variant['sort_order']) ? (int) $variant['sort_order'] : $index,
+                            'active' => isset($variant['is_active']) ? (bool) $variant['is_active'] : true,
+                            'attributes' => ['name' => $label],
+                            'metadata' => $variant['metadata'] ?? null,
+                            'created_by' => $request->user()->id,
+                            'updated_by' => $request->user()->id,
                         ]);
                     }
                 }
@@ -432,6 +479,38 @@ class ProductController extends Controller
     {
         $primary = $product->images->firstWhere('is_primary', true) ?: $product->images->sortBy('order')->first();
         $product->update(['image' => $primary?->image_url]);
+    }
+
+    /**
+     * @return array<int,array<string,mixed>>
+     */
+    protected function decodeVariants($raw): array
+    {
+        if ($raw === null || $raw === '') {
+            return [];
+        }
+
+        if (is_array($raw)) {
+            return $raw;
+        }
+
+        $decoded = json_decode((string) $raw, true);
+        return is_array($decoded) ? $decoded : [];
+    }
+
+    /**
+     * @param array<int,array<string,mixed>> $variants
+     */
+    protected function assertUniqueVariantLabels(array $variants): void
+    {
+        $labels = collect($variants)
+            ->map(fn ($variant) => strtolower(trim((string) ($variant['label'] ?? $variant['name'] ?? ''))))
+            ->filter()
+            ->values();
+
+        if ($labels->count() !== $labels->unique()->count()) {
+            abort(422, 'Duplicate option labels are not allowed for a product.');
+        }
     }
 }
 

@@ -94,4 +94,54 @@ trait CreatesCommerceData
             'is_default' => true,
         ]);
     }
+
+    protected function makeOptionedProductWithStock(User $vendor): array
+    {
+        $commerce = $this->makeProductWithStock($vendor);
+        $product = $commerce['product'];
+        $warehouse = $commerce['warehouse'];
+
+        $product->update([
+            'has_options' => true,
+            'base_price' => 2000,
+            'price' => 2000,
+        ]);
+
+        $first = $commerce['sku'];
+        $first->update([
+            'option_label' => '1kg (mudu)',
+            'price' => 2000,
+            'stock_quantity' => 10,
+            'sort_order' => 0,
+            'active' => true,
+            'attributes' => ['name' => '1kg (mudu)'],
+        ]);
+        Stock::updateOrCreate(
+            ['sku_id' => $first->id, 'warehouse_id' => $warehouse->id],
+            ['on_hand' => 10, 'reserved' => 0]
+        );
+
+        $second = Sku::create([
+            'product_id' => $product->id,
+            'sku_code' => 'SKU-' . strtoupper(uniqid()),
+            'option_label' => '2kg (mudu)',
+            'price' => 5000,
+            'weight' => 2,
+            'active' => true,
+            'stock_quantity' => 8,
+            'sort_order' => 1,
+            'attributes' => ['name' => '2kg (mudu)'],
+        ]);
+        Stock::updateOrCreate(
+            ['sku_id' => $second->id, 'warehouse_id' => $warehouse->id],
+            ['on_hand' => 8, 'reserved' => 0]
+        );
+
+        return [
+            'category' => $commerce['category'],
+            'product' => $product->fresh(),
+            'warehouse' => $warehouse,
+            'options' => [$first->fresh(), $second->fresh()],
+        ];
+    }
 }

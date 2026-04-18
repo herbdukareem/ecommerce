@@ -47,6 +47,7 @@
               <div class="flex-1 min-w-0">
                 <h3 class="font-semibold text-primary mb-1 truncate">{{ item.product_title }}</h3>
                 <p class="text-sm text-secondary mb-2">SKU: {{ item.sku_code }}</p>
+                <p v-if="item.option_label" class="text-xs text-secondary mb-2">Option: {{ item.option_label }}</p>
 
                 <!-- Attributes -->
                 <div v-if="item.attributes" class="flex flex-wrap gap-2 mb-2">

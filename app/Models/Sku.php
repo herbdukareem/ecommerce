@@ -13,12 +13,23 @@ class Sku extends Model
 
     protected $fillable = [
         'product_id', 'sku_code', 'price', 'cost', 'weight', 'length', 'width', 'height', 'active',
-        'stock_quantity', 'attributes', // New fields for variant management
+        'stock_quantity', 'attributes',
+        'option_label', 'option_code', 'compare_at_price', 'cost_price', 'low_stock_threshold',
+        'image_path', 'sort_order', 'unit', 'metadata', 'created_by', 'updated_by', // New fields for variant management
     ];
 
     protected $casts = [
         'active' => 'boolean',
         'attributes' => 'array',
+        'metadata' => 'array',
+        'sort_order' => 'integer',
+        'stock_quantity' => 'integer',
+        'compare_at_price' => 'decimal:2',
+        'cost_price' => 'decimal:2',
+    ];
+
+    protected $appends = [
+        'display_label',
     ];
 
     protected static function booted(): void
@@ -69,5 +80,15 @@ class Sku extends Model
     public function inventoryLedgerEntries()
     {
         return $this->hasMany(InventoryLedgerEntry::class, 'variant_id');
+    }
+
+    /**
+     * Alias for option naming in UI and APIs.
+     */
+    public function getDisplayLabelAttribute(): string
+    {
+        $variantAttributes = $this->getAttribute('attributes');
+        $rawAttributeName = is_array($variantAttributes) ? data_get($variantAttributes, 'name') : null;
+        return (string) ($this->option_label ?: $rawAttributeName ?: $this->sku_code ?: ('Option #' . $this->id));
     }
 }

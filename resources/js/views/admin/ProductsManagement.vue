@@ -276,6 +276,13 @@
                     placeholder="Enter SKU"
                   />
                 </div>
+
+                <div class="md:col-span-2">
+                  <label class="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
+                    <input v-model="productForm.has_options" type="checkbox" class="rounded border-gray-300" />
+                    Enable product options (variants)
+                  </label>
+                </div>
               </div>
             </div>
 
@@ -327,17 +334,22 @@
             <!-- Product Variants -->
             <div class="space-y-4">
               <div class="flex items-center justify-between">
-                <h3 class="text-lg font-semibold text-gray-900">Product Variants</h3>
+                <h3 class="text-lg font-semibold text-gray-900">Product Options</h3>
                 <button
                   type="button"
                   @click="addVariant"
+                  :disabled="!productForm.has_options"
                   class="text-sm text-orange-600 hover:text-orange-700 font-medium"
                 >
                   <i class="mdi mdi-plus"></i> Add Variant
                 </button>
               </div>
 
-              <div v-if="productForm.variants.length === 0" class="text-center py-8 text-gray-500">
+              <div v-if="!productForm.has_options" class="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
+                This product will use simple add-to-cart flow. Enable product options to create selectable purchasable options.
+              </div>
+
+              <div v-else-if="productForm.variants.length === 0" class="text-center py-8 text-gray-500">
                 No variants added. Click "Add Variant" to create product variations.
               </div>
 
@@ -360,11 +372,11 @@
 
                   <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <div>
-                      <label class="block text-xs font-medium text-gray-700 mb-1">Variant Name</label>
+                      <label class="block text-xs font-medium text-gray-700 mb-1">Option Label *</label>
                       <input
-                        v-model="variant.name"
+                        v-model="variant.label"
                         type="text"
-                        placeholder="e.g., Red - Large"
+                        placeholder="e.g., 2kg (mudu)"
                         class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500"
                       />
                     </div>
@@ -388,9 +400,9 @@
                       />
                     </div>
                     <div>
-                      <label class="block text-xs font-medium text-gray-700 mb-1">Stock</label>
+                      <label class="block text-xs font-medium text-gray-700 mb-1">Stock Quantity</label>
                       <input
-                        v-model.number="variant.stock"
+                        v-model.number="variant.stock_quantity"
                         type="number"
                         placeholder="0"
                         class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500"
@@ -405,6 +417,21 @@
                         placeholder="0.00"
                         class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500"
                       />
+                    </div>
+                    <div>
+                      <label class="block text-xs font-medium text-gray-700 mb-1">Sort Order</label>
+                      <input
+                        v-model.number="variant.sort_order"
+                        type="number"
+                        placeholder="0"
+                        class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500"
+                      />
+                    </div>
+                    <div class="flex items-center">
+                      <label class="inline-flex items-center gap-2 text-xs font-medium text-gray-700">
+                        <input v-model="variant.is_active" type="checkbox" class="rounded border-gray-300" />
+                        Active
+                      </label>
                     </div>
                   </div>
                 </div>
@@ -457,6 +484,7 @@ const productForm = ref({
   description: '',
   category_id: '',
   status: 'active',
+  has_options: false,
   price: 0,
   sku: '',
   images: [],
@@ -542,6 +570,7 @@ const resetForm = () => {
     description: '',
     category_id: '',
     status: 'active',
+    has_options: false,
     price: 0,
     sku: '',
     images: [],
@@ -577,11 +606,13 @@ const removeImage = (index) => {
 // Variant management
 const addVariant = () => {
   productForm.value.variants.push({
-    name: '',
+    label: '',
     sku: '',
     price: productForm.value.price,
-    stock: 0,
+    stock_quantity: 0,
     weight: 0,
+    sort_order: productForm.value.variants.length,
+    is_active: true,
   });
 };
 
@@ -600,6 +631,7 @@ const saveProduct = async () => {
     formData.append('description', productForm.value.description || '');
     formData.append('category_id', productForm.value.category_id);
     formData.append('status', productForm.value.status);
+    formData.append('has_options', productForm.value.has_options ? '1' : '0');
     formData.append('price', productForm.value.price);
     formData.append('sku', productForm.value.sku || '');
 
@@ -632,7 +664,7 @@ const saveProduct = async () => {
     }
 
     // Add variants
-    if (productForm.value.variants.length > 0) {
+    if (productForm.value.has_options && productForm.value.variants.length > 0) {
       formData.append('variants', JSON.stringify(productForm.value.variants));
     }
 
@@ -670,6 +702,7 @@ const editProduct = (product) => {
     description: product.description || '',
     category_id: product.categories?.[0]?.id || product.category_id || '',
     status: product.status,
+    has_options: !!product.has_options,
     price: product.price || product.base_price,
     sku: product.skus?.[0]?.sku_code || product.sku || '',
     images: product.images ? product.images.map(img => ({
@@ -679,11 +712,13 @@ const editProduct = (product) => {
     })) : [],
     variants: product.skus ? product.skus.map(sku => ({
       id: sku.id,
-      name: sku.attributes?.name || 'Default',
+      label: sku.option_label || sku.display_label || sku.attributes?.name || 'Default',
       sku: sku.sku_code,
       price: sku.price,
-      stock: sku.stock_quantity || 0,
+      stock_quantity: sku.stock_quantity || 0,
       weight: sku.weight || 0,
+      sort_order: sku.sort_order || 0,
+      is_active: sku.active !== false,
       existing: true
     })) : [],
   };

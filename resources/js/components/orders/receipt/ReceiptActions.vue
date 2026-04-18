@@ -12,7 +12,7 @@
     </div>
 
     <Button
-      v-if="canCancel"
+      v-if="cancellationEnabled && canCancel"
       variant="danger"
       icon="close-circle"
       class="w-full"
@@ -37,6 +37,10 @@ defineProps({
     default: false,
   },
   downloading: {
+    type: Boolean,
+    default: false,
+  },
+  cancellationEnabled: {
     type: Boolean,
     default: false,
   },

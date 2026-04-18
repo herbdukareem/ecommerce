@@ -50,7 +50,7 @@
               <p class="text-sm text-secondary mt-1">If your order has not entered shipping yet, you can cancel it below.</p>
 
               <Button
-                v-if="canCancel"
+                v-if="orderCancellationEnabled && canCancel"
                 variant="danger"
                 class="w-full mt-4"
                 :loading="cancelling"
@@ -60,7 +60,11 @@
                 Cancel Order
               </Button>
 
-              <p v-else class="text-xs text-secondary mt-4">
+              <p v-if="!orderCancellationEnabled" class="text-xs text-secondary mt-4">
+                Order cancellation is temporarily unavailable.
+              </p>
+
+              <p v-else-if="!canCancel" class="text-xs text-secondary mt-4">
                 Cancellation is no longer available for this order status.
               </p>
             </Card>
@@ -100,6 +104,7 @@ const invoiceRef = ref(null);
 const orderId = computed(() => route.params.id);
 const order = computed(() => ordersStore.currentOrder);
 const formatCurrency = settingsStore.formatCurrency;
+const orderCancellationEnabled = false;
 
 const canCancel = computed(() => {
   const status = order.value?.status;
