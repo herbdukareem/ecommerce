@@ -1,199 +1,85 @@
-name: Deploy 2 cPanel
+name: Deploy Laravel + Vue to cPanel (FTP)
 
 on:
   push:
-    branches: ["main"]
-  workflow_dispatch:
-    inputs:
-      hotfix_app_only:
-        description: "Deploy app code only (skip vendor)"
-        required: false
-        type: boolean
-        default: true
-
-concurrency:
-  group: cpanel-deploy-main
-  cancel-in-progress: false
-
-env:
-  # FTP path should be relative to FTP root on cPanel.
-  FTP_TARGET_DIR: /public_html/ecommerce.custechth.org/
+    branches: [ "main" ]
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    env:
-      CPANEL_FTP_HOST: ${{ secrets.CPANEL_FTP_HOST }}
-      CPANEL_FTP_USERNAME: ${{ secrets.CPANEL_FTP_USERNAME }}
-      CPANEL_FTP_PASSWORD: ${{ secrets.CPANEL_FTP_PASSWORD }}
-      CPANEL_FTP_PORT: ${{ secrets.CPANEL_FTP_PORT || '21' }}
-      CPANEL_FTPS_LEGACY_PORT: ${{ secrets.CPANEL_FTPS_LEGACY_PORT || '990' }}
-      HOTFIX_APP_ONLY: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.hotfix_app_only == 'true' }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Validate FTP secrets
-        run: |
-          set -euo pipefail
-          if [ -z "${CPANEL_FTP_HOST:-}" ] || [ -z "${CPANEL_FTP_USERNAME:-}" ] || [ -z "${CPANEL_FTP_PASSWORD:-}" ]; then
-            echo "Missing FTP secrets. Required: CPANEL_FTP_HOST, CPANEL_FTP_USERNAME, CPANEL_FTP_PASSWORD"
-            exit 1
-          fi
-
+      # ---------- PHP / Composer ----------
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.2'
+          php-version: "8.2"
           tools: composer:v2
+          extensions: mbstring, bcmath, curl, dom, fileinfo, openssl, pdo, pdo_mysql, tokenizer, xml, ctype, json
 
+      - name: Install Composer dependencies (no-dev)
+        run: |
+          composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
+
+      # ---------- Node / Vite ----------
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          # Keep deploy workflow robust even if lockfile is missing on a branch.
-          # (CI workflow should remain strict.)
+          node-version: "24"
+          cache: "npm"
 
-      - name: Install and build frontend assets
+      - name: Install NPM deps
+        run: npm ci
+
+      - name: Build Vite assets
+        run: npm run build
+      - name: Ensure Laravel manifest path
         run: |
-          if [ -f package-lock.json ]; then
-            npm ci
-          else
-            npm install
+          if [ -f public/build/.vite/manifest.json ] && [ ! -f public/build/manifest.json ]; then
+            cp public/build/.vite/manifest.json public/build/manifest.json
           fi
-          npm run build
 
-      - name: Install production PHP dependencies
-        if: env.HOTFIX_APP_ONLY != 'true'
+
+      # ---------- Laravel optimize ----------
+      - name: Laravel optimize (safe)
         run: |
-          set -euo pipefail
-          composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
+          php artisan config:clear
+          php artisan route:clear
+          php artisan view:clear
 
-      - name: Deploy to cPanel via FTPS
-        id: deploy_ftps
-        continue-on-error: true
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.6
-        with:
-          server: ${{ env.CPANEL_FTP_HOST }}
-          username: ${{ env.CPANEL_FTP_USERNAME }}
-          password: ${{ env.CPANEL_FTP_PASSWORD }}
-          port: ${{ env.CPANEL_FTP_PORT }}
-          protocol: ftps
-          local-dir: ./
-          server-dir: ${{ env.FTP_TARGET_DIR }}
-          state-name: ${{ env.HOTFIX_APP_ONLY == 'true' && '.ftp-deploy-sync-state-hotfix.json' || '.ftp-deploy-sync-state.json' }}
-          timeout: 120000
-          log-level: standard
-          dangerous-clean-slate: false
-          exclude: |
-            **/.git/**
-            **/.github/**
-            **/node_modules/**
-            **/tests/**
-            **/.gitignore
-            **/.gitattributes
-            **/.editorconfig
-            **/.phpunit.result.cache
-            **/.ftp-deploy-sync-state*.json
-            **/storage/logs/**
-            **/storage/framework/cache/**
-            **/storage/framework/sessions/**
-            **/storage/framework/views/**
-            **/.env
-            **/.env.*
-            **/phpunit.xml
-            **/*.md
-            **/.DS_Store
-            ${{ env.HOTFIX_APP_ONLY == 'true' && '**/vendor/**' || '' }}
+      # ---------- Prepare deploy folder ----------
+      - name: Prepare deploy directory
+        run: |
+          rsync -av --delete \
+            --exclude ".git" \
+            --exclude ".github" \
+            --exclude "vendor" \
+            --exclude "node_modules" \
+            --exclude "tests" \
+            --exclude ".env" \
+            --exclude "storage/*.key" \
+            --exclude "storage/logs" \
+            --exclude "storage/framework/cache" \
+            --exclude "storage/framework/sessions" \
+            --exclude "storage/framework/views" \
+            --exclude "bootstrap/cache/*.php" \
+            ./ ./deploy/
 
-      - name: Deploy to cPanel via FTP (fallback)
-        id: deploy_ftp
-        if: steps.deploy_ftps.outcome == 'failure'
-        continue-on-error: true
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.6
+      # IMPORTANT:
+      # If your hosting expects only public files in public_html,
+      # then deploy ONLY /public to public_html, and keep the rest outside public_html.
+      # See notes below.
+
+      - name: Deploy via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
-          server: ${{ env.CPANEL_FTP_HOST }}
-          username: ${{ env.CPANEL_FTP_USERNAME }}
-          password: ${{ env.CPANEL_FTP_PASSWORD }}
-          port: ${{ env.CPANEL_FTP_PORT }}
+          server: ${{ secrets.CPANEL_FTP_HOST }}
+          username: ${{ secrets.CPANEL_FTP_USERNAME }}
+          password: ${{ secrets.CPANEL_FTP_PASSWORD }}
           protocol: ftp
-          local-dir: ./
-          server-dir: ${{ env.FTP_TARGET_DIR }}
-          state-name: ${{ env.HOTFIX_APP_ONLY == 'true' && '.ftp-deploy-sync-state-hotfix.json' || '.ftp-deploy-sync-state.json' }}
-          timeout: 120000
-          log-level: standard
+          local-dir: deploy/
+          server-dir: public_html/ecommerce.custechth.org/
           dangerous-clean-slate: false
-          exclude: |
-            **/.git/**
-            **/.github/**
-            **/node_modules/**
-            **/tests/**
-            **/.gitignore
-            **/.gitattributes
-            **/.editorconfig
-            **/.phpunit.result.cache
-            **/.ftp-deploy-sync-state*.json
-            **/storage/logs/**
-            **/storage/framework/cache/**
-            **/storage/framework/sessions/**
-            **/storage/framework/views/**
-            **/.env
-            **/.env.*
-            **/phpunit.xml
-            **/*.md
-            **/.DS_Store
-            ${{ env.HOTFIX_APP_ONLY == 'true' && '**/vendor/**' || '' }}
-
-      - name: Deploy to cPanel via FTPS legacy (final fallback)
-        id: deploy_ftps_legacy
-        if: steps.deploy_ftps.outcome == 'failure' && steps.deploy_ftp.outcome == 'failure'
-        continue-on-error: true
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.6
-        with:
-          server: ${{ env.CPANEL_FTP_HOST }}
-          username: ${{ env.CPANEL_FTP_USERNAME }}
-          password: ${{ env.CPANEL_FTP_PASSWORD }}
-          port: ${{ env.CPANEL_FTPS_LEGACY_PORT }}
-          protocol: ftps-legacy
-          local-dir: ./
-          server-dir: ${{ env.FTP_TARGET_DIR }}
-          state-name: ${{ env.HOTFIX_APP_ONLY == 'true' && '.ftp-deploy-sync-state-hotfix.json' || '.ftp-deploy-sync-state.json' }}
-          timeout: 120000
-          log-level: standard
-          dangerous-clean-slate: false
-          exclude: |
-            **/.git/**
-            **/.github/**
-            **/node_modules/**
-            **/tests/**
-            **/.gitignore
-            **/.gitattributes
-            **/.editorconfig
-            **/.phpunit.result.cache
-            **/.ftp-deploy-sync-state*.json
-            **/storage/logs/**
-            **/storage/framework/cache/**
-            **/storage/framework/sessions/**
-            **/storage/framework/views/**
-            **/.env
-            **/.env.*
-            **/phpunit.xml
-            **/*.md
-            **/.DS_Store
-            ${{ env.HOTFIX_APP_ONLY == 'true' && '**/vendor/**' || '' }}
-
-      - name: Fail if both FTPS and FTP failed
-        if: steps.deploy_ftps.outcome == 'failure' && steps.deploy_ftp.outcome == 'failure' && steps.deploy_ftps_legacy.outcome == 'failure'
-        run: |
-          echo "FTPS, FTP, and FTPS legacy all failed."
-          echo "Verify CPANEL_FTP_HOST, CPANEL_FTP_USERNAME, and CPANEL_FTP_PASSWORD."
-          echo "For cPanel, use the exact FTP account username format from cPanel FTP Accounts (often user@domain)."
-          echo "If the error includes 'Timeout when trying to open data connection', ask hosting support to check passive FTP ports/firewall/NAT settings."
-          exit 1
-
-      - name: Deployment note
-        run: |
-          echo "Deploy completed over FTP/FTPS."
-          echo "SSH is disabled on this cPanel account, so remote artisan/composer commands are skipped."
-          echo "hotfix_app_only=${HOTFIX_APP_ONLY}"
