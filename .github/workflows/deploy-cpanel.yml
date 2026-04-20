@@ -84,6 +84,7 @@ jobs:
           username: ${{ secrets.CPANEL_FTP_USERNAME }}
           password: ${{ secrets.CPANEL_FTP_PASSWORD }}
           protocol: ftp
-          local-dir: deploy/
+          port: 21
+          local-dir: ./
           server-dir: public_html/ecommerce.custechth.org/
           dangerous-clean-slate: false
