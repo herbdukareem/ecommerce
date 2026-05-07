@@ -17,9 +17,10 @@ class DashboardController extends Controller
      */
     public function index(Request $request)
     {
-        $period = max(1, (int) $request->integer('period', 30));
-        $start = now()->subDays($period);
-        $previousStart = now()->subDays($period * 2);
+        $window = $this->periodWindow($request);
+        $start = $window['start'];
+        $previousStart = $window['previous_start'];
+        $previousEnd = $window['previous_end'];
 
         $paidOrders = Order::query()
             ->where('payment_status', 'paid')
@@ -27,7 +28,7 @@ class DashboardController extends Controller
 
         $previousRevenue = (float) Order::query()
             ->where('payment_status', 'paid')
-            ->whereBetween('created_at', [$previousStart, $start])
+            ->whereBetween('created_at', [$previousStart, $previousEnd])
             ->sum('total');
 
         $revenue = (float) (clone $paidOrders)->sum('total');
@@ -93,9 +94,12 @@ class DashboardController extends Controller
      */
     public function salesData(Request $request)
     {
-        $period = max(1, (int) $request->integer('period', 7));
+        $window = $this->periodWindow($request, 7);
+        $period = min($window['days'], 31);
+        $start = $window['label'] === 'today' ? now()->startOfDay() : now()->subDays($period);
+
         $salesData = Order::where('payment_status', 'paid')
-            ->where('created_at', '>=', now()->subDays($period))
+            ->where('created_at', '>=', $start)
             ->select(
                 DB::raw('DATE(created_at) as date'),
                 DB::raw('SUM(total) as total'),
@@ -114,13 +118,15 @@ class DashboardController extends Controller
 
         // Fill in missing dates with zero values
         $result = [];
-        for ($i = min($period - 1, 30); $i >= 0; $i--) {
+        for ($i = $period - 1; $i >= 0; $i--) {
             $date = now()->subDays($i)->format('Y-m-d');
             $existing = $salesData->firstWhere('date', $date);
             
             $result[] = [
                 'date' => $date,
+                'period' => $window['label'] === 'today' ? 'Today' : $date,
                 'sales' => $existing ? $existing['sales'] : 0,
+                'revenue' => $existing ? $existing['sales'] : 0,
                 'orders' => $existing ? $existing['orders'] : 0,
             ];
         }
@@ -133,14 +139,15 @@ class DashboardController extends Controller
      */
     public function topProducts(Request $request)
     {
-        $period = max(1, (int) $request->integer('period', 30));
+        $window = $this->periodWindow($request);
+        $start = $window['start'];
         $limit = max(1, (int) $request->integer('limit', 8));
 
         $soldProducts = DB::table('order_items')
             ->join('orders', 'orders.id', '=', 'order_items.order_id')
             ->leftJoin('skus', 'skus.id', '=', 'order_items.sku_id')
             ->where('orders.payment_status', 'paid')
-            ->where('orders.created_at', '>=', now()->subDays($period))
+            ->where('orders.created_at', '>=', $start)
             ->selectRaw('COALESCE(order_items.product_id, skus.product_id) as product_id')
             ->selectRaw('COALESCE(SUM(order_items.quantity), 0) as total_sold')
             ->selectRaw('COALESCE(SUM(COALESCE(order_items.total_price_at_sale, order_items.quantity * order_items.price_snapshot)), 0) as revenue')
@@ -200,6 +207,32 @@ class DashboardController extends Controller
             });
 
         return response()->json($recentOrders);
+    }
+
+    private function periodWindow(Request $request, int $defaultDays = 30): array
+    {
+        $period = $request->input('period', $defaultDays);
+
+        if (is_string($period) && strtolower($period) === 'today') {
+            return [
+                'label' => 'today',
+                'days' => 1,
+                'start' => now()->startOfDay(),
+                'previous_start' => now()->subDay()->startOfDay(),
+                'previous_end' => now()->subDay()->endOfDay(),
+            ];
+        }
+
+        $days = max(1, (int) $period);
+        $start = now()->subDays($days);
+
+        return [
+            'label' => (string) $days,
+            'days' => $days,
+            'start' => $start,
+            'previous_start' => now()->subDays($days * 2),
+            'previous_end' => $start,
+        ];
     }
 }
 

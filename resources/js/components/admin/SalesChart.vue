@@ -5,7 +5,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue';
+import { computed, ref, onMounted, watch } from 'vue';
 import { Chart, registerables } from 'chart.js';
 
 Chart.register(...registerables);
@@ -15,16 +15,31 @@ const props = defineProps({
     type: Array,
     default: () => [],
   },
+  formatCurrency: {
+    type: Function,
+    default: (value) => Number(value || 0).toLocaleString(),
+  },
 });
 
 const chartCanvas = ref(null);
 let chartInstance = null;
 
+const chartRows = computed(() => props.data.map((row) => ({
+  label: row.period || row.date || '',
+  revenue: Number(row.revenue ?? row.sales ?? row.total ?? 0),
+  orders: Number(row.orders ?? 0),
+})));
+
 const renderChart = () => {
-  if (!chartCanvas.value || !props.data.length) return;
+  if (!chartCanvas.value) return;
 
   if (chartInstance) {
     chartInstance.destroy();
+    chartInstance = null;
+  }
+
+  if (!chartRows.value.length) {
+    return;
   }
 
   const ctx = chartCanvas.value.getContext('2d');
@@ -32,14 +47,17 @@ const renderChart = () => {
   chartInstance = new Chart(ctx, {
     type: 'line',
     data: {
-      labels: props.data.map(d => d.period),
+      labels: chartRows.value.map((row) => row.label),
       datasets: [
         {
           label: 'Revenue',
-          data: props.data.map(d => d.revenue),
-          borderColor: 'rgb(59, 130, 246)',
-          backgroundColor: 'rgba(59, 130, 246, 0.1)',
+          data: chartRows.value.map((row) => row.revenue),
+          borderColor: 'rgb(249, 115, 22)',
+          backgroundColor: 'rgba(249, 115, 22, 0.14)',
           tension: 0.4,
+          fill: true,
+          pointRadius: 4,
+          pointHoverRadius: 6,
         },
       ],
     },
@@ -51,13 +69,21 @@ const renderChart = () => {
           display: true,
           position: 'top',
         },
+        tooltip: {
+          callbacks: {
+            label(context) {
+              const row = chartRows.value[context.dataIndex] || {};
+              return `Revenue: ${props.formatCurrency(context.parsed.y)} (${row.orders || 0} orders)`;
+            },
+          },
+        },
       },
       scales: {
         y: {
           beginAtZero: true,
           ticks: {
             callback: function(value) {
-              return '$' + value.toLocaleString();
+              return props.formatCurrency(value);
             },
           },
         },

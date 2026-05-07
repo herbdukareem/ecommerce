@@ -23,6 +23,8 @@
 </template>
 
 <script setup>
+import { useSettingsStore } from '../../stores/settings';
+
 defineProps({
   products: {
     type: Array,
@@ -30,11 +32,7 @@ defineProps({
   },
 });
 
-const formatCurrency = (value) => {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-  }).format(value || 0);
-};
+const settingsStore = useSettingsStore();
+const formatCurrency = settingsStore.formatCurrency;
 </script>
 

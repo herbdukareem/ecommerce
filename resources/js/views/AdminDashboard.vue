@@ -44,7 +44,7 @@
 
       <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
         <Card title="Sales Trend" icon="chart-line" :elevation="2" class="xl:col-span-8">
-          <SalesChart :data="salesData" />
+          <SalesChart :data="salesData" :format-currency="formatCurrency" />
         </Card>
 
         <Card title="Operating Snapshot" icon="view-dashboard-outline" :elevation="2" class="xl:col-span-4">
@@ -94,6 +94,7 @@ const topProducts = ref([]);
 const recentOrders = ref([]);
 
 const periodOptions = [
+  { label: 'Today', value: 'today' },
   { label: '7 days', value: 7 },
   { label: '30 days', value: 30 },
   { label: '90 days', value: 90 },
@@ -131,7 +132,7 @@ const loadDashboard = async () => {
   try {
     const [statsRes, salesRes, productsRes, ordersRes] = await Promise.all([
       axios.get('/api/admin/dashboard', { params: { period: period.value } }),
-      axios.get('/api/admin/sales-data', { params: { period: Math.min(period.value, 30) } }),
+      axios.get('/api/admin/sales-data', { params: { period: period.value } }),
       axios.get('/api/admin/top-products', { params: { period: period.value, limit: 8 } }),
       axios.get('/api/admin/recent-orders', { params: { limit: 8 } }),
     ]);

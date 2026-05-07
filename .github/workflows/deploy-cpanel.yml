@@ -7,7 +7,7 @@ on:
 
 jobs:
   deploy:
-    name: Build and deploy via SSH
+    name: Build and deploy via SSH/rsync
     runs-on: ubuntu-latest
 
     steps:
@@ -62,40 +62,60 @@ jobs:
           echo "Checking for nested deploy folder:"
           find deploy -maxdepth 2 -type d | head -50
 
-      - name: Upload files to Hostinger via SCP
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.HOSTINGER_SSH_HOST }}
-          username: ${{ secrets.HOSTINGER_SSH_USERNAME }}
-          port: ${{ secrets.HOSTINGER_SSH_PORT }}
-          key: ${{ secrets.HOSTINGER_SSH_PRIVATE_KEY }}
-          source: "deploy"
-          target: ${{ secrets.HOSTINGER_DEPLOY_PATH }}
-          strip_components: 1
-          overwrite: true
+      - name: Configure SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.HOSTINGER_SSH_PRIVATE_KEY }}" > ~/.ssh/hostinger_key
+          chmod 600 ~/.ssh/hostinger_key
+
+          ssh-keyscan -p ${{ secrets.HOSTINGER_SSH_PORT }} ${{ secrets.HOSTINGER_SSH_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Test SSH connection to Hostinger
+        run: |
+          ssh -i ~/.ssh/hostinger_key \
+            -p ${{ secrets.HOSTINGER_SSH_PORT }} \
+            -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=60 \
+            ${{ secrets.HOSTINGER_SSH_USERNAME }}@${{ secrets.HOSTINGER_SSH_HOST }} \
+            "echo 'SSH connection successful' && pwd && whoami && ls -la"
+
+      - name: Put Laravel app in maintenance mode
+        run: |
+          ssh -i ~/.ssh/hostinger_key \
+            -p ${{ secrets.HOSTINGER_SSH_PORT }} \
+            -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=60 \
+            ${{ secrets.HOSTINGER_SSH_USERNAME }}@${{ secrets.HOSTINGER_SSH_HOST }} \
+            "cd ${{ secrets.HOSTINGER_DEPLOY_PATH }} && php artisan down || true"
+
+      - name: Upload files to Hostinger using rsync
+        run: |
+          rsync -avz --delete \
+            --exclude=".env" \
+            --exclude="storage/logs/" \
+            --exclude="storage/app/public/" \
+            --exclude="storage/framework/cache/" \
+            --exclude="storage/framework/sessions/" \
+            --exclude="storage/framework/views/" \
+            -e "ssh -i ~/.ssh/hostinger_key -p ${{ secrets.HOSTINGER_SSH_PORT }} -o StrictHostKeyChecking=yes -o ConnectTimeout=60" \
+            deploy/ \
+            ${{ secrets.HOSTINGER_SSH_USERNAME }}@${{ secrets.HOSTINGER_SSH_HOST }}:${{ secrets.HOSTINGER_DEPLOY_PATH }}/
 
       - name: Run Laravel deployment commands on Hostinger
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.HOSTINGER_SSH_HOST }}
-          username: ${{ secrets.HOSTINGER_SSH_USERNAME }}
-          port: ${{ secrets.HOSTINGER_SSH_PORT }}
-          key: ${{ secrets.HOSTINGER_SSH_PRIVATE_KEY }}
-          script: |
-            cd ${{ secrets.HOSTINGER_DEPLOY_PATH }}
-
-            php artisan down || true
-
-            php artisan migrate --force
-            php artisan storage:link || true
-
-            php artisan config:clear
-            php artisan cache:clear
-            php artisan route:clear
-            php artisan view:clear
-
-            php artisan config:cache
-            php artisan route:cache
-            php artisan view:cache
-
-            php artisan up
+        run: |
+          ssh -i ~/.ssh/hostinger_key \
+            -p ${{ secrets.HOSTINGER_SSH_PORT }} \
+            -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=60 \
+            ${{ secrets.HOSTINGER_SSH_USERNAME }}@${{ secrets.HOSTINGER_SSH_HOST }} \
+            "cd ${{ secrets.HOSTINGER_DEPLOY_PATH }} && \
+            php artisan migrate --force && \
+            php artisan storage:link || true && \
+            php artisan config:clear && \
+            php artisan cache:clear && \
+            php artisan route:clear && \
+            php artisan view:clear && \
+            php artisan config:cache && \
+            php artisan route:cache && \
+            php artisan view:cache && \
+            php artisan up"
