@@ -4,52 +4,48 @@ import axios from 'axios';
 
 export const useSettingsStore = defineStore('settings', () => {
   const currency = ref('NGN');
-  const currencySymbol = ref('₦');
+  const currencySymbol = ref('NGN');
+  const currencyPrecision = ref(2);
   const locale = ref('en-NG');
-  
-  const currencies = {
-    NGN: { symbol: '₦', name: 'Nigerian Naira', locale: 'en-NG' },
-    USD: { symbol: '$', name: 'US Dollar', locale: 'en-US' },
-    EUR: { symbol: '€', name: 'Euro', locale: 'en-EU' },
-    GBP: { symbol: '£', name: 'British Pound', locale: 'en-GB' },
-  };
-
-  const setCurrency = (code) => {
-    if (currencies[code]) {
-      currency.value = code;
-      currencySymbol.value = currencies[code].symbol;
-      locale.value = currencies[code].locale;
-      localStorage.setItem('currency', code);
-    }
-  };
+  const loading = ref(false);
 
   const formatCurrency = (amount) => {
-    const numAmount = parseFloat(amount) || 0;
-    return new Intl.NumberFormat(locale.value, {
-      style: 'currency',
-      currency: currency.value,
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(numAmount);
+    const value = Number(amount || 0);
+    const formatted = new Intl.NumberFormat(locale.value, {
+      minimumFractionDigits: currencyPrecision.value,
+      maximumFractionDigits: currencyPrecision.value,
+    }).format(value);
+
+    return `${currencySymbol.value}${formatted}`;
   };
 
-  const initSettings = () => {
-    const savedCurrency = localStorage.getItem('currency');
-    if (savedCurrency && currencies[savedCurrency]) {
-      setCurrency(savedCurrency);
-    } else {
-      setCurrency('NGN'); // Default to Naira
+  const setCurrency = (settings) => {
+    currency.value = settings?.code || settings?.currency || currency.value;
+    currencySymbol.value = settings?.symbol || settings?.currency_symbol || currency.value;
+    currencyPrecision.value = Number(settings?.precision ?? settings?.currency_precision ?? 2);
+    locale.value = settings?.locale || settings?.currency_locale || locale.value;
+  };
+
+  const initSettings = async () => {
+    loading.value = true;
+    try {
+      const { data } = await axios.get('/api/settings/currency');
+      setCurrency(data);
+    } catch (error) {
+      setCurrency({ code: currency.value, symbol: currency.value, precision: currencyPrecision.value, locale: locale.value });
+    } finally {
+      loading.value = false;
     }
   };
 
   return {
     currency,
     currencySymbol,
+    currencyPrecision,
     locale,
-    currencies,
+    loading,
     setCurrency,
     formatCurrency,
     initSettings,
   };
 });
-

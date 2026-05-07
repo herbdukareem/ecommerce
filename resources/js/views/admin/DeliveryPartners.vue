@@ -14,7 +14,7 @@
           <Input v-model="form.phone" label="Phone" />
           <Input v-model="form.email" label="Email" />
           <Input v-model="form.company_name" label="Company" />
-          <Input v-model="form.vehicle_type" label="Vehicle Type" placeholder="motorbike, van" />
+          <Select v-model="form.vehicle_type" label="Vehicle Type" :options="vehicleTypeOptions" />
           <Select
             v-model="form.status"
             label="Status"
@@ -23,9 +23,10 @@
               { value: 'inactive', label: 'Inactive' },
             ]"
           />
-          <Input v-model="coverageStates" label="Coverage States" placeholder="Comma separated" class="md:col-span-2" />
-          <Input v-model="coverageCities" label="Coverage Cities" placeholder="Comma separated" class="md:col-span-2" />
-          <Input v-model="coverageAreas" label="Coverage Areas" placeholder="Comma separated" class="md:col-span-2" />
+          <Select v-model="coverageCity" label="Coverage City" :options="cityOptions" class="md:col-span-1" />
+          <Select v-model="coverageArea" label="Coverage Area" :options="areaOptions" class="md:col-span-1" />
+          <Input label="Contact/Dispatch Picture" type="file" accept="image/*" @change="onFileChange('contact_photo', $event)" />
+          <Input label="Vehicle Image" type="file" accept="image/*" @change="onFileChange('vehicle_image', $event)" />
           <textarea v-model="form.pricing_notes" class="border border-DEFAULT rounded-lg px-3 py-2 md:col-span-2" rows="2" placeholder="Pricing notes"></textarea>
           <textarea v-model="form.notes" class="border border-DEFAULT rounded-lg px-3 py-2 md:col-span-2" rows="2" placeholder="Internal notes"></textarea>
         </div>
@@ -56,8 +57,9 @@
               <div>
                 <p class="font-semibold text-primary">{{ partner.name }} ({{ partner.company_name || 'Individual' }})</p>
                 <p class="text-sm text-secondary">{{ partner.phone }}{{ partner.email ? ` | ${partner.email}` : '' }}</p>
-                <p class="text-sm text-secondary">States: {{ (partner.coverage_states || []).join(', ') || 'N/A' }}</p>
                 <p class="text-sm text-secondary">Cities: {{ (partner.coverage_cities || []).join(', ') || 'N/A' }}</p>
+                <p class="text-sm text-secondary">Areas: {{ (partner.coverage_areas || []).join(', ') || 'N/A' }}</p>
+                <p class="text-sm text-secondary">Vehicle: {{ humanize(partner.vehicle_type) }}</p>
               </div>
 
               <div class="flex items-center gap-2">
@@ -79,7 +81,7 @@
 </template>
 
 <script setup>
-import { inject, onMounted, ref } from 'vue';
+import { computed, inject, onMounted, ref, watch } from 'vue';
 import axios from 'axios';
 import AdminLayout from '../../components/admin/AdminLayout.vue';
 import Card from '../../components/ui/Card.vue';
@@ -93,6 +95,14 @@ const loading = ref(false);
 const saving = ref(false);
 const partners = ref([]);
 const filterStatus = ref('');
+const cities = ref([]);
+const areas = ref([]);
+const coverageCity = ref('');
+const coverageArea = ref('');
+const files = ref({
+  contact_photo: null,
+  vehicle_image: null,
+});
 
 const form = ref({
   name: '',
@@ -105,14 +115,47 @@ const form = ref({
   status: 'active',
 });
 
-const coverageStates = ref('');
-const coverageCities = ref('');
-const coverageAreas = ref('');
+const vehicleTypeOptions = [
+  { value: '', label: 'Select vehicle type' },
+  { value: 'motorbike', label: 'Motorbike' },
+  { value: 'bicycle', label: 'Bicycle' },
+  { value: 'tricycle', label: 'Tricycle' },
+  { value: 'car', label: 'Car' },
+  { value: 'van', label: 'Van' },
+  { value: 'truck', label: 'Truck' },
+];
 
-const splitList = (value) => value
-  .split(',')
-  .map((item) => item.trim())
-  .filter(Boolean);
+const cityOptions = computed(() => [
+  { value: '', label: 'Select city' },
+  ...cities.value.map((city) => ({ value: city.name, label: city.name, id: city.id })),
+]);
+
+const areaOptions = computed(() => [
+  { value: '', label: 'Select area' },
+  ...areas.value.map((area) => ({ value: area.name, label: area.name })),
+]);
+
+const humanize = (value) => String(value || 'N/A').replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+
+const onFileChange = (key, event) => {
+  files.value[key] = event.target.files?.[0] || null;
+};
+
+const loadCities = async () => {
+  const { data } = await axios.get('/api/checkout/cities');
+  cities.value = data.cities || [];
+};
+
+const loadAreas = async () => {
+  coverageArea.value = '';
+  const city = cities.value.find((entry) => entry.name === coverageCity.value);
+  if (!city) {
+    areas.value = [];
+    return;
+  }
+  const { data } = await axios.get('/api/checkout/areas', { params: { city_id: city.id } });
+  areas.value = data.areas || [];
+};
 
 const loadPartners = async () => {
   loading.value = true;
@@ -131,11 +174,15 @@ const loadPartners = async () => {
 const savePartner = async () => {
   saving.value = true;
   try {
-    await axios.post('/api/admin/delivery-partners', {
-      ...form.value,
-      coverage_states: splitList(coverageStates.value),
-      coverage_cities: splitList(coverageCities.value),
-      coverage_areas: splitList(coverageAreas.value),
+    const payload = new FormData();
+    Object.entries(form.value).forEach(([key, value]) => payload.append(key, value ?? ''));
+    payload.append('coverage_cities[0]', coverageCity.value || '');
+    payload.append('coverage_areas[0]', coverageArea.value || '');
+    if (files.value.contact_photo) payload.append('contact_photo', files.value.contact_photo);
+    if (files.value.vehicle_image) payload.append('vehicle_image', files.value.vehicle_image);
+
+    await axios.post('/api/admin/delivery-partners', payload, {
+      headers: { 'Content-Type': 'multipart/form-data' },
     });
 
     toast?.success('Delivery partner saved');
@@ -149,9 +196,9 @@ const savePartner = async () => {
       notes: '',
       status: 'active',
     };
-    coverageStates.value = '';
-    coverageCities.value = '';
-    coverageAreas.value = '';
+    coverageCity.value = '';
+    coverageArea.value = '';
+    files.value = { contact_photo: null, vehicle_image: null };
     await loadPartners();
   } catch (error) {
     const errors = error.response?.data?.errors;
@@ -172,5 +219,9 @@ const updateStatus = async (partnerId, status) => {
   }
 };
 
-onMounted(loadPartners);
+watch(coverageCity, loadAreas);
+
+onMounted(async () => {
+  await Promise.all([loadPartners(), loadCities()]);
+});
 </script>

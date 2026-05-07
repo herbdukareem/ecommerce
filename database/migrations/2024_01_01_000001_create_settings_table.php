@@ -25,7 +25,7 @@ return new class extends Migration
             ['key' => 'site_description', 'value' => 'Your one-stop shop for everything', 'created_at' => now(), 'updated_at' => now()],
             ['key' => 'site_email', 'value' => 'info@ashlab.com', 'created_at' => now(), 'updated_at' => now()],
             ['key' => 'currency', 'value' => 'NGN', 'created_at' => now(), 'updated_at' => now()],
-            ['key' => 'currency_symbol', 'value' => '₦', 'created_at' => now(), 'updated_at' => now()],
+            ['key' => 'currency_symbol', 'value' => 'NGN ', 'created_at' => now(), 'updated_at' => now()],
             ['key' => 'tax_rate', 'value' => '7.5', 'created_at' => now(), 'updated_at' => now()],
             ['key' => 'enable_reviews', 'value' => 'true', 'created_at' => now(), 'updated_at' => now()],
             ['key' => 'enable_wishlist', 'value' => 'true', 'created_at' => now(), 'updated_at' => now()],

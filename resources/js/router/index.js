@@ -33,6 +33,7 @@ const AdminSettingsManagement = () => import('../views/admin/SettingsManagement.
 const AdminOrdersManagement = () => import('../views/admin/OrdersManagement.vue');
 const AdminPaymentGateways = () => import('../views/admin/PaymentGateways.vue');
 const AdminDeliveryPartners = () => import('../views/admin/DeliveryPartners.vue');
+const AdminDispatchRiders = () => import('../views/admin/DispatchRiders.vue');
 const AdminOrderDetail = () => import('../views/admin/OrderDetail.vue');
 const AdminDispatchTimeSlots = () => import('../views/admin/DispatchTimeSlots.vue');
 const AdminOperationCities = () => import('../views/admin/OperationCities.vue');
@@ -42,6 +43,7 @@ const AdminInventoryManagement = () => import('../views/admin/InventoryManagemen
 const AdminInventoryLedger = () => import('../views/admin/InventoryLedger.vue');
 const AdminExpiryAlerts = () => import('../views/admin/ExpiryAlerts.vue');
 const AdminProfitMargins = () => import('../views/admin/ProfitMargins.vue');
+const AdminRolesPermissions = () => import('../views/admin/RolesPermissions.vue');
 
 const routes = [
   // Public routes
@@ -156,6 +158,12 @@ const routes = [
     meta: { requiresAdmin: true }
   },
   {
+    path: '/admin/dispatch-riders',
+    name: 'AdminDispatchRiders',
+    component: AdminDispatchRiders,
+    meta: { requiresAdmin: true }
+  },
+  {
     path: '/admin/dispatch-time-slots',
     name: 'AdminDispatchTimeSlots',
     component: AdminDispatchTimeSlots,
@@ -195,6 +203,12 @@ const routes = [
     path: '/admin/profit-margins',
     name: 'AdminProfitMargins',
     component: AdminProfitMargins,
+    meta: { requiresAdmin: true }
+  },
+  {
+    path: '/admin/roles-permissions',
+    name: 'AdminRolesPermissions',
+    component: AdminRolesPermissions,
     meta: { requiresAdmin: true }
   },
 ];

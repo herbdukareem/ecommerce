@@ -134,6 +134,48 @@ class InventoryService
         }, 3);
     }
 
+    public function commitOrder(Order $order, ?User $performedBy = null): bool
+    {
+        return DB::transaction(function () use ($order, $performedBy) {
+            $order->loadMissing('items.sku.product');
+
+            if ($order->items->isEmpty()) {
+                return true;
+            }
+
+            $alreadyCommitted = InventoryLedgerEntry::query()
+                ->where('reference_type', 'order')
+                ->where('reference_id', $order->id)
+                ->where('movement_type', 'order_deduction')
+                ->exists();
+
+            if ($alreadyCommitted) {
+                return true;
+            }
+
+            $items = $order->items
+                ->filter(fn ($item) => $item->sku)
+                ->map(fn ($item) => [
+                    'sku' => $item->sku,
+                    'qty' => (int) $item->quantity,
+                ])
+                ->values()
+                ->all();
+
+            if (empty($items)) {
+                return false;
+            }
+
+            if (!$this->commit($items)) {
+                return false;
+            }
+
+            $this->commitOrderInventory($order, $performedBy);
+
+            return true;
+        }, 3);
+    }
+
     public function commitOrderInventory(Order $order, ?User $performedBy = null): void
     {
         DB::transaction(function () use ($order, $performedBy) {
@@ -307,9 +349,27 @@ class InventoryService
         }
 
         if ($required > 0) {
-            throw ValidationException::withMessages([
-                'inventory' => ['Not enough batch inventory to allocate committed order items.'],
+            $sku->loadMissing('stocks');
+            $balanceAfter = (int) $sku->stocks->sum(fn (Stock $stock) => max(0, (int) $stock->on_hand - (int) $stock->reserved));
+
+            $this->recordLedger([
+                'product_id' => $sku->product_id,
+                'variant_id' => $sku->id,
+                'product_option_id' => $sku->id,
+                'movement_type' => 'order_deduction',
+                'quantity_in' => 0,
+                'quantity_out' => $required,
+                'balance_after' => $balanceAfter,
+                'cost_price' => null,
+                'selling_price' => $orderItem->price_snapshot,
+                'reference_type' => 'order',
+                'reference_id' => $order?->id,
+                'note' => 'Order item #' . $orderItem->id . ' deducted without batch allocation.',
+                'performed_by' => $performedBy?->id,
             ]);
+
+            $allocatedQty += $required;
+            $required = 0;
         }
 
         $unitCost = $allocatedQty > 0 ? ($allocatedCost / $allocatedQty) : null;

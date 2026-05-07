@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Order;
 use App\Models\Payment;
 use App\Models\PaymentGateway;
+use App\Services\InventoryService;
 use App\Services\Payments\DummyGateway;
 use App\Services\Payments\FlutterwaveGateway;
 use App\Services\Payments\PaystackGateway;
@@ -19,6 +20,7 @@ class PaymentService
 
     public function __construct(
         protected PaymentGatewayManager $gatewayManager,
+        protected InventoryService $inventoryService,
         protected ?PaymentGatewayInterface $gateway = null
     )
     {
@@ -74,6 +76,9 @@ class PaymentService
             $result = $gateway->verify($lockedPayment, $reference);
             $normalizedStatus = Arr::get($result, 'status', 'failed');
             $paidAt = $normalizedStatus === 'paid' ? ($lockedPayment->paid_at ?? now()) : null;
+            $order = $lockedPayment->order;
+            $oldPaymentStatus = $order->payment_status;
+            $oldOrderStatus = $order->status;
 
             $lockedPayment->update([
                 'status' => $normalizedStatus,
@@ -83,16 +88,53 @@ class PaymentService
             ]);
 
             if ($normalizedStatus === 'paid') {
-                $lockedPayment->order->update([
+                $order->loadMissing('items.sku.product', 'createdByAdmin');
+
+                $committed = $this->inventoryService->commitOrder(
+                    $order,
+                    $order->createdByAdmin
+                );
+
+                if (!$committed) {
+                    throw new \RuntimeException('Unable to commit inventory for paid order.');
+                }
+
+                $order->update([
                     'payment_status' => 'paid',
                     'status' => 'processing',
                 ]);
+
+                DB::afterCommit(fn () => app(OrderStatusEmailService::class)->notify($order->fresh(['user', 'items.sku.product']), [
+                    ['type' => 'Payment status', 'old' => $oldPaymentStatus, 'new' => 'paid'],
+                    ['type' => 'Order status', 'old' => $oldOrderStatus, 'new' => 'processing'],
+                ]));
             }
 
             if ($normalizedStatus === 'failed') {
-                $lockedPayment->order->update([
+                $order->loadMissing('items.sku');
+
+                $inventoryItems = $order->items
+                    ->filter(fn ($item) => $item->sku)
+                    ->map(fn ($item) => [
+                        'sku' => $item->sku,
+                        'qty' => (int) $item->quantity,
+                    ])
+                    ->values()
+                    ->all();
+
+                if (!empty($inventoryItems)) {
+                    $this->inventoryService->release($inventoryItems);
+                }
+
+                $order->update([
                     'payment_status' => 'failed',
                 ]);
+
+                DB::afterCommit(fn () => app(OrderStatusEmailService::class)->notify($order->fresh(['user', 'items.sku.product']), [[
+                    'type' => 'Payment status',
+                    'old' => $oldPaymentStatus,
+                    'new' => 'failed',
+                ]]));
             }
 
             return $result;

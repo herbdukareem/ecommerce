@@ -93,6 +93,9 @@
                 SKUs
               </th>
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Available Stock
+              </th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Actions
               </th>
             </tr>
@@ -118,7 +121,7 @@
                 <div class="text-xs text-gray-500">{{ product.vendor?.email }}</div>
               </td>
               <td class="px-6 py-4 whitespace-nowrap">
-                <div class="text-sm font-medium text-gray-900">₦{{ formatPrice(product.base_price) }}</div>
+                <div class="text-sm font-medium text-gray-900">{{ formatCurrency(product.base_price) }}</div>
               </td>
               <td class="px-6 py-4 whitespace-nowrap">
                 <span
@@ -134,6 +137,17 @@
               </td>
               <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                 {{ product.skus?.length || 0 }}
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap">
+                <div class="text-sm font-semibold" :class="stockTextClass(product)">
+                  {{ formatStock(product.available_stock) }}
+                </div>
+                <div v-if="Number(product.active_sku_count || 0) > 1" class="text-xs text-gray-500">
+                  {{ product.active_sku_count }} active variants
+                </div>
+                <div v-else-if="Number(product.available_stock || 0) === 0" class="text-xs text-gray-500">
+                  Out of stock
+                </div>
               </td>
               <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
                 <div class="flex items-center gap-2">
@@ -400,15 +414,6 @@
                       />
                     </div>
                     <div>
-                      <label class="block text-xs font-medium text-gray-700 mb-1">Stock Quantity</label>
-                      <input
-                        v-model.number="variant.stock_quantity"
-                        type="number"
-                        placeholder="0"
-                        class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500"
-                      />
-                    </div>
-                    <div>
                       <label class="block text-xs font-medium text-gray-700 mb-1">Weight (kg)</label>
                       <input
                         v-model.number="variant.weight"
@@ -534,8 +539,11 @@ import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import axios from 'axios';
 import AdminLayout from '../../components/admin/AdminLayout.vue';
+import { useSettingsStore } from '../../stores/settings';
 
 const router = useRouter();
+const settingsStore = useSettingsStore();
+const formatCurrency = settingsStore.formatCurrency;
 
 const products = ref([]);
 const categories = ref([]);
@@ -687,7 +695,6 @@ const addVariant = () => {
     label: '',
     sku: '',
     price: productForm.value.price,
-    stock_quantity: 0,
     weight: 0,
     sort_order: productForm.value.variants.length,
     is_active: true,
@@ -878,7 +885,6 @@ const editProduct = (product) => {
       label: sku.option_label || sku.display_label || sku.attributes?.name || 'Default',
       sku: sku.sku_code,
       price: sku.price,
-      stock_quantity: sku.stock_quantity || 0,
       weight: sku.weight || 0,
       sort_order: sku.sort_order || 0,
       is_active: sku.active !== false,
@@ -929,8 +935,19 @@ const paginationPages = computed(() => {
 });
 
 // Format price
-const formatPrice = (price) => {
-  return new Intl.NumberFormat('en-NG').format(price);
+const formatStock = (stock) => {
+  return new Intl.NumberFormat('en-NG').format(Math.max(0, Number(stock || 0)));
+};
+
+const stockTextClass = (product) => {
+  const available = Number(product?.available_stock || 0);
+  if (available <= 0) {
+    return 'text-red-600';
+  }
+  if (available <= 5) {
+    return 'text-amber-600';
+  }
+  return 'text-green-700';
 };
 
 // Initialize

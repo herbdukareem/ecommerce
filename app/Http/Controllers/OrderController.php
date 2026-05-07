@@ -4,11 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\Order;
 use App\Models\OrderFulfillment;
-use App\Mail\ShippingUpdate;
 use App\Jobs\AdjustInventoryJob;
+use App\Services\OrderStatusEmailService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Mail;
 
 /**
  * Manage orders for customers and vendors/admin.
@@ -22,7 +21,7 @@ class OrderController extends Controller
     {
         $user = $request->user();
 
-        $query = Order::with(['items.sku.product.images', 'items.productOption', 'shippingAddress', 'payments', 'deliveryPartner', 'shippingMethod', 'shippingZone', 'city', 'area', 'dispatchTimeSlot'])
+        $query = Order::with(['items.sku.product.images', 'items.productOption', 'shippingAddress', 'payments', 'deliveryPartner', 'dispatchRider.user', 'shippingMethod', 'shippingZone', 'city', 'area', 'dispatchTimeSlot'])
             ->where('user_id', $user->id);
 
         if ($request->filled('status')) {
@@ -52,6 +51,7 @@ class OrderController extends Controller
             'payments',
             'fulfillments.warehouse',
             'deliveryPartner',
+            'dispatchRider.user',
             'shippingMethod',
             'shippingZone',
             'city',
@@ -82,6 +82,9 @@ class OrderController extends Controller
             ], 422);
         }
 
+        $oldOrderStatus = $order->status;
+        $oldPaymentStatus = $order->payment_status;
+
         DB::transaction(function () use ($order) {
             AdjustInventoryJob::dispatch($order->id, 'release');
 
@@ -90,6 +93,11 @@ class OrderController extends Controller
                 'payment_status' => 'refunded',
             ]);
         });
+
+        app(OrderStatusEmailService::class)->notify($order->fresh(['user', 'items.sku.product']), [
+            ['type' => 'Order status', 'old' => $oldOrderStatus, 'new' => 'cancelled'],
+            ['type' => 'Payment status', 'old' => $oldPaymentStatus, 'new' => 'refunded'],
+        ]);
 
         return response()->json([
             'message' => 'Order cancelled successfully',
@@ -137,6 +145,7 @@ class OrderController extends Controller
 
         $this->authorize('updateStatus', $order);
 
+        $oldStatus = $order->status;
         $order->update(['status' => $request->status]);
 
         if ($request->status === 'delivered') {
@@ -146,6 +155,12 @@ class OrderController extends Controller
         if ($request->status === 'cancelled') {
             AdjustInventoryJob::dispatch($order->id, 'release');
         }
+
+        app(OrderStatusEmailService::class)->notify($order->fresh(['user', 'items.sku.product']), [[
+            'type' => 'Order status',
+            'old' => $oldStatus,
+            'new' => $request->status,
+        ]]);
 
         return response()->json([
             'message' => 'Order status updated successfully',
@@ -179,11 +194,19 @@ class OrderController extends Controller
         ]);
 
         // Update order status
+        $oldStatus = $order->status;
         $order->update(['status' => 'shipped']);
 
-        // Send shipping update email
-        $order->load(['user', 'shippingAddress']);
-        Mail::to($order->user->email)->queue(new ShippingUpdate($order, $fulfillment));
+        $shippingNote = trim(implode(' ', array_filter([
+            $fulfillment->shipment_provider ? 'Carrier: ' . $fulfillment->shipment_provider . '.' : null,
+            $fulfillment->tracking_no ? 'Tracking number: ' . $fulfillment->tracking_no . '.' : null,
+        ])));
+
+        app(OrderStatusEmailService::class)->notify($order->fresh(['user', 'items.sku.product']), [[
+            'type' => 'Order status',
+            'old' => $oldStatus,
+            'new' => 'shipped',
+        ]], $shippingNote ?: null);
 
         return response()->json([
             'message' => 'Order fulfilled successfully',

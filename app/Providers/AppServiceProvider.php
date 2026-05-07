@@ -10,6 +10,7 @@ use App\Models\Product;
 use App\Models\Order;
 use App\Models\Address;
 use App\Models\Review;
+use App\Services\MailConfigurationService;
 use App\Policies\ProductPolicy;
 use App\Policies\OrderPolicy;
 use App\Policies\AddressPolicy;
@@ -42,6 +43,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        app(MailConfigurationService::class)->apply();
+
         // Register policies
         foreach ($this->policies as $model => $policy) {
             Gate::policy($model, $policy);

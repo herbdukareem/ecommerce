@@ -3,6 +3,7 @@
 namespace App\Mail;
 
 use App\Models\Order;
+use App\Services\CurrencyFormatter;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
@@ -42,8 +43,9 @@ class OrderConfirmation extends Mailable implements ShouldQueue
             view: 'emails.order-confirmation',
             with: [
                 'order' => $this->order,
-                'items' => $this->order->items()->with('sku.product')->get(),
+                'items' => $this->order->items()->with(['sku.product', 'productOption'])->get(),
                 'shippingAddress' => $this->order->shippingAddress,
+                'currency' => app(CurrencyFormatter::class),
             ],
         );
     }

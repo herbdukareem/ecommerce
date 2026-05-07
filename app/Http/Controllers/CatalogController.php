@@ -236,11 +236,7 @@ class CatalogController extends Controller
                 return (int) $stock->on_hand - (int) $stock->reserved;
             });
 
-            $available = $stockFromWarehouses > 0
-                ? $stockFromWarehouses
-                : (int) ($sku->stock_quantity ?? 0);
-
-            return $available > 0;
+            return $stockFromWarehouses > 0;
         })->values();
 
         $minOptionPrice = $activeSkus->min('price');
@@ -261,10 +257,6 @@ class CatalogController extends Controller
             $availableStock = $sku->stocks->sum(function ($stock) {
                 return (int) $stock->on_hand - (int) $stock->reserved;
             });
-
-            if ($availableStock <= 0 && (int) ($sku->stock_quantity ?? 0) > 0) {
-                $availableStock = (int) $sku->stock_quantity;
-            }
 
             $sku->setAttribute('label', $sku->display_label);
             $sku->setAttribute('available_stock', max(0, (int) $availableStock));

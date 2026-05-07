@@ -12,19 +12,70 @@ export const useAuthStore = defineStore('auth', {
   getters: {
     isAuthenticated: (state) => !!state.token && !!state.user,
     isVendor: (state) => state.user?.roles?.some(role => role.name === 'Vendor'),
-    isAdmin: (state) => state.user?.roles?.some(role => role.name === 'Admin'),
+    isAdmin: (state) => state.user?.roles?.some(role => [
+      'Super Admin',
+      'Admin',
+      'Inventory Manager',
+      'Sales/Admin Order Officer',
+      'Dispatch Manager',
+      'Accountant/Finance',
+    ].includes(role.name)),
+    isDispatchRider: (state) => state.user?.roles?.some(role => role.name === 'Dispatch Rider'),
+    permissions: (state) => state.user?.permissions || [],
+    can: (state) => (permission) => {
+      const permissions = state.user?.permissions || [];
+      return permissions.includes(permission) || state.user?.roles?.some(role => role.name === 'Super Admin');
+    },
   },
 
   actions: {
     async register(userData) {
       try {
         this.loading = true;
-        const { data } = await axios.post('/api/auth/register', userData);
+        const { data, status } = await axios.post('/api/auth/register', userData);
+        const verificationRequired = data.verification_required || data.verificationRequired || status === 202;
+        if (verificationRequired) {
+          return {
+            success: true,
+            verificationRequired: true,
+            email: data.email || userData.email,
+            message: data.message,
+          };
+        }
+
         this.user = data.user;
         this.token = data.token;
         localStorage.setItem('token', data.token);
         axios.defaults.headers.common['Authorization'] = `Bearer ${data.token}`;
         return { success: true };
+      } catch (error) {
+        return { success: false, error: error.response?.data };
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async verifyRegistration(payload) {
+      try {
+        this.loading = true;
+        const { data } = await axios.post('/api/auth/register/verify', payload);
+        this.user = data.user;
+        this.token = data.token;
+        localStorage.setItem('token', data.token);
+        axios.defaults.headers.common['Authorization'] = `Bearer ${data.token}`;
+        return { success: true, message: data.message };
+      } catch (error) {
+        return { success: false, error: error.response?.data };
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async resendRegistrationCode(email) {
+      try {
+        this.loading = true;
+        const { data } = await axios.post('/api/auth/register/resend-code', { email });
+        return { success: true, message: data.message };
       } catch (error) {
         return { success: false, error: error.response?.data };
       } finally {

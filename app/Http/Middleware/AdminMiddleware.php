@@ -22,8 +22,15 @@ class AdminMiddleware
             ], 401);
         }
 
-        // Check if user has Admin role
-        if (!$request->user()->hasRole('Admin')) {
+        // Check if user has an operational admin role
+        if (!$request->user()->hasAnyRole([
+            'Super Admin',
+            'Admin',
+            'Inventory Manager',
+            'Sales/Admin Order Officer',
+            'Dispatch Manager',
+            'Accountant/Finance',
+        ])) {
             return response()->json([
                 'message' => 'Unauthorized. Admin access required.'
             ], 403);

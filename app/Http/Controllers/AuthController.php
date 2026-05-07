@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Mail\CustomerRegistrationVerificationCode;
+use App\Models\PendingCustomerRegistration;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Auth;
 use App\Http\Controllers\Controller;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Validation\ValidationException;
@@ -26,25 +28,122 @@ class AuthController extends Controller
             'password' => ['required', 'confirmed', PasswordRule::min(8)],
         ]);
 
-        $user = User::create([
-            'name' => $data['name'],
-            'email' => $data['email'],
-            'password' => Hash::make($data['password']),
+        $code = (string) random_int(100000, 999999);
+
+        PendingCustomerRegistration::query()->updateOrCreate(
+            ['email' => strtolower($data['email'])],
+            [
+                'name' => $data['name'],
+                'password' => Hash::make($data['password']),
+                'verification_code_hash' => Hash::make($code),
+                'attempts' => 0,
+                'expires_at' => now()->addMinutes(15),
+                'verified_at' => null,
+                'ip_address' => $request->ip(),
+            ]
+        );
+
+        Mail::to($data['email'])->send(new CustomerRegistrationVerificationCode($data['name'], $code));
+
+        return response()->json([
+            'message' => 'A verification code has been sent to your email.',
+            'verification_required' => true,
+            'email' => strtolower($data['email']),
+        ], 202);
+    }
+
+    public function verifyRegistration(Request $request)
+    {
+        $data = $request->validate([
+            'email' => 'required|string|email|max:255|unique:users',
+            'code' => 'required|string|size:6',
         ]);
 
-        // Assign default role (Customer)
+        $pending = PendingCustomerRegistration::query()
+            ->where('email', strtolower($data['email']))
+            ->first();
+
+        if (!$pending) {
+            throw ValidationException::withMessages([
+                'email' => ['No pending registration was found for this email.'],
+            ]);
+        }
+
+        if ($pending->expires_at->isPast()) {
+            throw ValidationException::withMessages([
+                'code' => ['This verification code has expired. Please request a new code.'],
+            ]);
+        }
+
+        if ($pending->attempts >= 5) {
+            throw ValidationException::withMessages([
+                'code' => ['Too many incorrect attempts. Please request a new code.'],
+            ]);
+        }
+
+        if (!Hash::check($data['code'], $pending->verification_code_hash)) {
+            $pending->increment('attempts');
+            throw ValidationException::withMessages([
+                'code' => ['The verification code is incorrect.'],
+            ]);
+        }
+
+        $user = User::create([
+            'name' => $pending->name,
+            'email' => $pending->email,
+            'password' => $pending->password,
+            'email_verified_at' => now(),
+        ]);
+
         if (method_exists($user, 'assignRole')) {
             $user->assignRole(Role::findOrCreate('Customer', 'sanctum'));
         }
 
-        // Create token
+        $pending->delete();
+
         $token = $user->createToken('api-token')->plainTextToken;
 
         return response()->json([
-            'message' => 'User registered successfully',
+            'message' => 'Email verified and account created successfully.',
             'token' => $token,
-            'user' => $user->load('roles'),
+            'user' => $this->userPayload($user),
         ], 201);
+    }
+
+    public function resendRegistrationCode(Request $request)
+    {
+        $data = $request->validate([
+            'email' => 'required|string|email|max:255|unique:users',
+        ]);
+
+        $pending = PendingCustomerRegistration::query()
+            ->where('email', strtolower($data['email']))
+            ->first();
+
+        if (!$pending) {
+            throw ValidationException::withMessages([
+                'email' => ['No pending registration was found for this email.'],
+            ]);
+        }
+
+        if ($pending->updated_at && $pending->updated_at->gt(now()->subMinute())) {
+            throw ValidationException::withMessages([
+                'email' => ['Please wait a moment before requesting another code.'],
+            ]);
+        }
+
+        $code = (string) random_int(100000, 999999);
+        $pending->update([
+            'verification_code_hash' => Hash::make($code),
+            'attempts' => 0,
+            'expires_at' => now()->addMinutes(15),
+        ]);
+
+        Mail::to($pending->email)->send(new CustomerRegistrationVerificationCode($pending->name, $code));
+
+        return response()->json([
+            'message' => 'A new verification code has been sent.',
+        ]);
     }
 
     /**
@@ -65,6 +164,12 @@ class AuthController extends Controller
             ]);
         }
 
+        if ($user->hasRole('Customer') && !$user->email_verified_at) {
+            throw ValidationException::withMessages([
+                'email' => ['Please verify your email address before signing in.'],
+            ]);
+        }
+
         // Delete old tokens
         $user->tokens()->delete();
 
@@ -74,7 +179,7 @@ class AuthController extends Controller
         return response()->json([
             'message' => 'Login successful',
             'token' => $token,
-            'user' => $user->load('roles'),
+            'user' => $this->userPayload($user),
         ]);
     }
 
@@ -84,7 +189,7 @@ class AuthController extends Controller
     public function me(Request $request)
     {
         return response()->json([
-            'user' => $request->user()->load('roles'),
+            'user' => $this->userPayload($request->user()),
         ]);
     }
 
@@ -201,5 +306,13 @@ class AuthController extends Controller
     {
         $request->user()->currentAccessToken()->delete();
         return response()->json(['message' => 'Logged out successfully']);
+    }
+
+    protected function userPayload(User $user): User
+    {
+        $user->load('roles');
+        $user->setAttribute('permissions', $user->getAllPermissions()->pluck('name')->values());
+
+        return $user;
     }
 }

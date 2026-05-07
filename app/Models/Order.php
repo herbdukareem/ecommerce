@@ -17,6 +17,7 @@ class Order extends Model
         'area_id',
         'dispatch_time_slot_id',
         'delivery_partner_id',
+        'dispatch_rider_id',
         'shipping_zone_id',
         'shipping_method_id',
         'city_name',
@@ -62,8 +63,12 @@ class Order extends Model
 
     public const DELIVERY_STATUS_TRANSITIONS = [
         'pending_assignment' => ['assigned', 'cancelled'],
-        'assigned' => ['packed', 'cancelled'],
-        'packed' => ['shipped', 'cancelled'],
+        'assigned' => ['accepted', 'rejected', 'picked_up', 'cancelled'],
+        'accepted' => ['picked_up', 'delivery_failed', 'cancelled'],
+        'rejected' => ['assigned', 'cancelled'],
+        'packed' => ['ready_for_dispatch', 'cancelled'],
+        'ready_for_dispatch' => ['assigned', 'cancelled'],
+        'picked_up' => ['in_transit', 'delivery_failed'],
         'shipped' => ['in_transit', 'delivery_failed', 'returned'],
         'in_transit' => ['delivered', 'delivery_failed', 'returned'],
         'delivery_failed' => ['in_transit', 'returned', 'cancelled'],
@@ -130,6 +135,21 @@ class Order extends Model
     public function deliveryPartner()
     {
         return $this->belongsTo(DeliveryPartner::class, 'delivery_partner_id');
+    }
+
+    public function dispatchRider()
+    {
+        return $this->belongsTo(DispatchRider::class, 'dispatch_rider_id');
+    }
+
+    public function dispatchAssignments()
+    {
+        return $this->hasMany(DispatchAssignment::class);
+    }
+
+    public function currentDispatchAssignment()
+    {
+        return $this->hasOne(DispatchAssignment::class)->latestOfMany();
     }
 
     public function canTransitionDeliveryStatusTo(string $nextStatus): bool

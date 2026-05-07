@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\DeliveryPartner;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class DeliveryPartnerController extends Controller
 {
@@ -35,6 +36,14 @@ class DeliveryPartnerController extends Controller
     {
         $data = $this->validatePayload($request);
 
+        if ($request->hasFile('contact_photo')) {
+            $data['contact_photo_path'] = $request->file('contact_photo')->store('delivery-partners/contacts', 'public');
+        }
+
+        if ($request->hasFile('vehicle_image')) {
+            $data['vehicle_image_path'] = $request->file('vehicle_image')->store('delivery-partners/vehicles', 'public');
+        }
+
         $partner = DeliveryPartner::create($data);
 
         return response()->json([
@@ -47,6 +56,20 @@ class DeliveryPartnerController extends Controller
     {
         $partner = DeliveryPartner::findOrFail($id);
         $data = $this->validatePayload($request, true);
+
+        if ($request->hasFile('contact_photo')) {
+            if ($partner->contact_photo_path) {
+                Storage::disk('public')->delete($partner->contact_photo_path);
+            }
+            $data['contact_photo_path'] = $request->file('contact_photo')->store('delivery-partners/contacts', 'public');
+        }
+
+        if ($request->hasFile('vehicle_image')) {
+            if ($partner->vehicle_image_path) {
+                Storage::disk('public')->delete($partner->vehicle_image_path);
+            }
+            $data['vehicle_image_path'] = $request->file('vehicle_image')->store('delivery-partners/vehicles', 'public');
+        }
 
         $partner->update($data);
 
@@ -90,7 +113,9 @@ class DeliveryPartnerController extends Controller
             'coverage_areas' => 'nullable|array',
             'pricing_notes' => 'nullable|string|max:1000',
             'status' => 'sometimes|string|in:active,inactive',
-            'vehicle_type' => 'nullable|string|max:100',
+            'vehicle_type' => 'nullable|string|in:motorbike,bicycle,tricycle,car,van,truck',
+            'contact_photo' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:4096',
+            'vehicle_image' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:4096',
             'notes' => 'nullable|string|max:1000',
         ]);
 

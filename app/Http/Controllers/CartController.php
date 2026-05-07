@@ -61,9 +61,6 @@ class CartController extends Controller
                 $availableStock = $sku->stocks->sum(function ($stock) {
                     return $stock->on_hand - $stock->reserved;
                 });
-                if ($availableStock <= 0 && (int) ($sku->stock_quantity ?? 0) > 0) {
-                    $availableStock = (int) $sku->stock_quantity;
-                }
 
                 $unitPrice = (float) ($item->price ?? $sku->price);
                 $optionLabel = $item->option_label_snapshot ?: ($item->productOption?->display_label ?? $sku->display_label ?? null);
@@ -182,10 +179,6 @@ class CartController extends Controller
             return $stock->on_hand - $stock->reserved;
         });
 
-        if ($availableStock <= 0 && (int) ($sku->stock_quantity ?? 0) > 0) {
-            $availableStock = (int) $sku->stock_quantity;
-        }
-
         if ($availableStock < $validated['quantity']) {
             return response()->json([
                 'message' => 'Insufficient stock available',
@@ -243,9 +236,6 @@ class CartController extends Controller
         $availableStock = $cartItem->sku->stocks->sum(function ($stock) {
             return $stock->on_hand - $stock->reserved;
         });
-        if ($availableStock <= 0 && (int) ($cartItem->sku->stock_quantity ?? 0) > 0) {
-            $availableStock = (int) $cartItem->sku->stock_quantity;
-        }
 
         if ($availableStock < $request->quantity) {
             return response()->json([

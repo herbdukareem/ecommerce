@@ -20,7 +20,22 @@ class ProductController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Product::with(['vendor', 'categories', 'skus.images', 'images']);
+        $availableStockSubquery = DB::table('skus')
+            ->leftJoin('stocks', 'stocks.sku_id', '=', 'skus.id')
+            ->whereColumn('skus.product_id', 'products.id')
+            ->where('skus.active', true)
+            ->selectRaw('COALESCE(SUM(CASE WHEN stocks.on_hand > stocks.reserved THEN stocks.on_hand - stocks.reserved ELSE 0 END), 0)');
+
+        $activeSkuCountSubquery = DB::table('skus')
+            ->whereColumn('skus.product_id', 'products.id')
+            ->where('skus.active', true)
+            ->selectRaw('COUNT(*)');
+
+        $query = Product::query()
+            ->with(['vendor', 'categories', 'skus.images', 'images'])
+            ->select('products.*')
+            ->selectSub($availableStockSubquery, 'available_stock')
+            ->selectSub($activeSkuCountSubquery, 'active_sku_count');
 
         // Search
         if ($request->filled('search')) {
@@ -55,6 +70,12 @@ class ProductController extends Controller
         $query->orderBy($sortBy, $sortOrder);
 
         $products = $query->paginate($request->get('per_page', 20));
+
+        $products->getCollection()->transform(function (Product $product) {
+            $product->setAttribute('available_stock', max(0, (int) ($product->available_stock ?? 0)));
+            $product->setAttribute('active_sku_count', max(0, (int) ($product->active_sku_count ?? 0)));
+            return $product;
+        });
 
         return response()->json($products);
     }

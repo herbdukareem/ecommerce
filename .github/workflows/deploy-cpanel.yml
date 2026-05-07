@@ -1,90 +1,91 @@
-name: Deploy Laravel + Vue to cPanel (FTP)
+name: Deploy shop.webmedic.ng to Hostinger
 
 on:
   push:
-    branches: [ "main" ]
+    branches:
+      - main
 
 jobs:
   deploy:
+    name: Build and deploy via SSH
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ---------- PHP / Composer ----------
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: "8.2"
-          tools: composer:v2
-          extensions: mbstring, bcmath, curl, dom, fileinfo, openssl, pdo, pdo_mysql, tokenizer, xml, ctype, json
+          php-version: '8.2'
+          extensions: mbstring, bcmath, ctype, fileinfo, json, openssl, pdo, tokenizer, xml, curl, zip
+          coverage: none
 
-      - name: Install Composer dependencies (no-dev)
-        run: |
-          composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
+      - name: Install Composer dependencies
+        run: composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
 
-      # ---------- Node / Vite ----------
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version: '20'
 
-      - name: Install NPM deps
-        run: |
-          if [ -f package-lock.json ]; then
-            npm ci
-          else
-            npm install
-          fi
+      - name: Install NPM dependencies
+        run: npm ci
 
-      - name: Build Vite assets
+      - name: Build frontend assets
         run: npm run build
-      - name: Ensure Laravel manifest path
+
+      - name: Prepare deployment package
         run: |
-          if [ -f public/build/.vite/manifest.json ] && [ ! -f public/build/manifest.json ]; then
-            cp public/build/.vite/manifest.json public/build/manifest.json
-          fi
+          mkdir deploy
+          rsync -av \
+            --exclude=".git" \
+            --exclude=".github" \
+            --exclude="node_modules" \
+            --exclude="tests" \
+            --exclude=".env" \
+            --exclude="storage/logs/*" \
+            --exclude="storage/framework/cache/*" \
+            --exclude="storage/framework/sessions/*" \
+            --exclude="storage/framework/views/*" \
+            ./ deploy/
 
-
-      # ---------- Laravel optimize ----------
-      - name: Laravel optimize (safe)
-        run: |
-          php artisan config:clear
-          php artisan route:clear
-          php artisan view:clear
-
-      # ---------- Prepare deploy folder ----------
-      - name: Prepare deploy directory
-        run: |
-          rsync -av --delete \
-            --exclude ".git" \
-            --exclude ".github" \
-            --exclude "vendor" \
-            --exclude "node_modules" \
-            --exclude "tests" \
-            --exclude ".env" \
-            --exclude "storage/*.key" \
-            --exclude "storage/logs" \
-            --exclude "storage/framework/cache" \
-            --exclude "storage/framework/sessions" \
-            --exclude "storage/framework/views" \
-            --exclude "bootstrap/cache/*.php" \
-            ./ ./deploy/
-
-      # IMPORTANT:
-      # If your hosting expects only public files in public_html,
-      # then deploy ONLY /public to public_html, and keep the rest outside public_html.
-      # See notes below.
-
-      - name: Deploy via FTP
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+      - name: Upload files to Hostinger via SCP
+        uses: appleboy/scp-action@v0.1.7
         with:
-          server: ${{ secrets.CPANEL_FTP_HOST }}
-          username: ${{ secrets.CPANEL_FTP_USERNAME }}
-          password: ${{ secrets.CPANEL_FTP_PASSWORD }}
-          protocol: ftp
-          port: 21
-          local-dir: ./
-          server-dir: public_html/ecommerce.custechth.org/
-          dangerous-clean-slate: false
+          host: ${{ secrets.HOSTINGER_SSH_HOST }}
+          username: ${{ secrets.HOSTINGER_SSH_USERNAME }}
+          port: ${{ secrets.HOSTINGER_SSH_PORT }}
+          key: ${{ secrets.HOSTINGER_SSH_PRIVATE_KEY }}
+          source: "deploy/*"
+          target: ${{ secrets.HOSTINGER_DEPLOY_PATH }}
+          strip_components: 1
+          overwrite: true
+
+      - name: Run Laravel deployment commands on Hostinger
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.HOSTINGER_SSH_HOST }}
+          username: ${{ secrets.HOSTINGER_SSH_USERNAME }}
+          port: ${{ secrets.HOSTINGER_SSH_PORT }}
+          key: ${{ secrets.HOSTINGER_SSH_PRIVATE_KEY }}
+          script: |
+            cd ${{ secrets.HOSTINGER_DEPLOY_PATH }}
+
+            php artisan down || true
+
+            composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
+
+            php artisan migrate --force
+            php artisan storage:link || true
+
+            php artisan config:clear
+            php artisan cache:clear
+            php artisan route:clear
+            php artisan view:clear
+
+            php artisan config:cache
+            php artisan route:cache
+            php artisan view:cache
+
+            php artisan up

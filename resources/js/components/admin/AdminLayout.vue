@@ -149,6 +149,7 @@ const navigation = [
   // { path: '/admin/vendors', icon: 'store', label: 'Vendors', badge: '3', badgeVariant: 'warning' },
   // { path: '/admin/zones', icon: 'map-marker-radius', label: 'Shipping Zones' },
   { path: '/admin/delivery-partners', icon: 'bike-fast', label: 'Delivery Partners' },
+  { path: '/admin/dispatch-riders', icon: 'account-hard-hat', label: 'Dispatch Riders' },
   { path: '/admin/dispatch-time-slots', icon: 'clock-outline', label: 'Dispatch Slots' },
   { path: '/admin/operation-cities', icon: 'city', label: 'Operation Cities' },
   { path: '/admin/operation-areas', icon: 'map-marker', label: 'Operation Areas' },
@@ -158,6 +159,7 @@ const navigation = [
   { path: '/admin/profit-margins', icon: 'chart-box-outline', label: 'Profit Margins' },
   { path: '/admin/analytics', icon: 'chart-line', label: 'Analytics' },
   { path: '/admin/payment-gateways', icon: 'credit-card-cog', label: 'Payment Gateways' },
+  { path: '/admin/roles-permissions', icon: 'shield-account', label: 'Roles & Permissions' },
   { path: '/admin/settings', icon: 'cog-outline', label: 'Settings' },
 ];
 </script>

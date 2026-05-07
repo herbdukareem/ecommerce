@@ -101,6 +101,11 @@ class User extends Authenticatable
         return $this->hasMany(Warehouse::class, 'vendor_id');
     }
 
+    public function dispatchRider()
+    {
+        return $this->hasOne(DispatchRider::class);
+    }
+
     protected function getDefaultGuardName(): string
     {
         return $this->guard_name;

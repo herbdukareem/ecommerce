@@ -3,6 +3,9 @@
 namespace Tests\Feature;
 
 use App\Models\PaymentGateway;
+use App\Models\Stock;
+use App\Models\InventoryLedgerEntry;
+use Database\Seeders\PermissionsSeeder;
 use Illuminate\Http\Client\Request as HttpRequest;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -14,6 +17,12 @@ class PaymentTest extends TestCase
 {
     use RefreshDatabase;
     use CreatesCommerceData;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seed(PermissionsSeeder::class);
+    }
 
     public function test_customer_can_initialize_and_verify_payment(): void
     {
@@ -475,5 +484,190 @@ class PaymentTest extends TestCase
             return str_contains($request->url(), '/transaction/verify/')
                 && $request->hasHeader('Authorization', 'Bearer sk_live_verify_mode_live');
         });
+    }
+
+    public function test_successful_paid_order_creates_single_stock_out_ledger_and_deducts_stock(): void
+    {
+        $customer = $this->makeUserWithRole('Customer', 'customer-paid-ledger@test.com');
+        $vendor = $this->makeUserWithRole('Vendor', 'vendor-paid-ledger@test.com');
+        $commerce = $this->makeProductWithStock($vendor);
+        $address = $this->makeAddress($customer);
+
+        Sanctum::actingAs($customer);
+
+        Http::fake([
+            '*/transaction/initialize' => Http::response([
+                'status' => true,
+                'data' => [
+                    'authorization_url' => 'https://checkout.test/pay',
+                    'access_code' => 'ACCESS_CODE',
+                ],
+            ], 200),
+            '*/transaction/verify/*' => Http::response([
+                'status' => true,
+                'data' => [
+                    'status' => 'success',
+                ],
+            ], 200),
+        ]);
+
+        $this->postJson('/api/cart/items', ['sku_id' => $commerce['sku']->id, 'quantity' => 2])->assertCreated();
+
+        $order = $this->postJson('/api/checkout/place-order', [
+            'address_id' => $address->id,
+            'payment_method' => 'card',
+            'payment_provider' => 'paystack',
+            'shipping_method' => 'standard',
+        ])->assertCreated()->json('order');
+
+        $initialized = $this->postJson('/api/payments/orders/' . $order['id'] . '/initialize')->assertOk()->json();
+        $paymentId = $initialized['payment']['id'];
+        $reference = $initialized['checkout']['reference'];
+
+        $this->postJson('/api/payments/' . $paymentId . '/verify', [
+            'reference' => $reference,
+        ])->assertOk()->assertJsonPath('result.status', 'paid');
+
+        $stock = Stock::query()->where('sku_id', $commerce['sku']->id)->first();
+        $this->assertNotNull($stock);
+        $this->assertSame(18, (int) $stock->on_hand);
+        $this->assertSame(0, (int) $stock->reserved);
+
+        $this->assertDatabaseHas('inventory_ledger_entries', [
+            'variant_id' => $commerce['sku']->id,
+            'reference_type' => 'order',
+            'reference_id' => $order['id'],
+            'movement_type' => 'order_deduction',
+            'quantity_out' => 2,
+        ]);
+    }
+
+    public function test_duplicate_verify_does_not_double_deduct_or_duplicate_stock_out_ledger(): void
+    {
+        $customer = $this->makeUserWithRole('Customer', 'customer-paid-idempotent@test.com');
+        $vendor = $this->makeUserWithRole('Vendor', 'vendor-paid-idempotent@test.com');
+        $commerce = $this->makeProductWithStock($vendor);
+        $address = $this->makeAddress($customer);
+
+        Sanctum::actingAs($customer);
+
+        Http::fake([
+            '*/transaction/initialize' => Http::response([
+                'status' => true,
+                'data' => [
+                    'authorization_url' => 'https://checkout.test/pay',
+                    'access_code' => 'ACCESS_CODE',
+                ],
+            ], 200),
+            '*/transaction/verify/*' => Http::response([
+                'status' => true,
+                'data' => [
+                    'status' => 'success',
+                ],
+            ], 200),
+        ]);
+
+        $this->postJson('/api/cart/items', ['sku_id' => $commerce['sku']->id, 'quantity' => 2])->assertCreated();
+
+        $order = $this->postJson('/api/checkout/place-order', [
+            'address_id' => $address->id,
+            'payment_method' => 'card',
+            'payment_provider' => 'paystack',
+            'shipping_method' => 'standard',
+        ])->assertCreated()->json('order');
+
+        $initialized = $this->postJson('/api/payments/orders/' . $order['id'] . '/initialize')->assertOk()->json();
+        $paymentId = $initialized['payment']['id'];
+        $reference = $initialized['checkout']['reference'];
+
+        $this->postJson('/api/payments/' . $paymentId . '/verify', [
+            'reference' => $reference,
+        ])->assertOk();
+
+        $this->postJson('/api/payments/' . $paymentId . '/verify', [
+            'reference' => $reference,
+        ])->assertOk()->assertJsonPath('result.idempotent', true);
+
+        $stock = Stock::query()->where('sku_id', $commerce['sku']->id)->first();
+        $this->assertNotNull($stock);
+        $this->assertSame(18, (int) $stock->on_hand);
+        $this->assertSame(0, (int) $stock->reserved);
+
+        $deductionRows = InventoryLedgerEntry::query()
+            ->where('variant_id', $commerce['sku']->id)
+            ->where('reference_type', 'order')
+            ->where('reference_id', $order['id'])
+            ->where('movement_type', 'order_deduction')
+            ->count();
+
+        $this->assertSame(1, $deductionRows);
+    }
+
+    public function test_paid_order_with_multiple_items_creates_stock_out_rows_and_appears_in_ledger_endpoint(): void
+    {
+        $admin = $this->makeUserWithRole('Admin', 'admin-ledger-visibility@test.com');
+        $customer = $this->makeUserWithRole('Customer', 'customer-ledger-visibility@test.com');
+        $vendor = $this->makeUserWithRole('Vendor', 'vendor-ledger-visibility@test.com');
+        $first = $this->makeProductWithStock($vendor);
+        $second = $this->makeProductWithStock($vendor);
+        $address = $this->makeAddress($customer);
+
+        Sanctum::actingAs($customer);
+
+        Http::fake([
+            '*/transaction/initialize' => Http::response([
+                'status' => true,
+                'data' => [
+                    'authorization_url' => 'https://checkout.test/pay',
+                    'access_code' => 'ACCESS_CODE',
+                ],
+            ], 200),
+            '*/transaction/verify/*' => Http::response([
+                'status' => true,
+                'data' => [
+                    'status' => 'success',
+                ],
+            ], 200),
+        ]);
+
+        $this->postJson('/api/cart/items', ['sku_id' => $first['sku']->id, 'quantity' => 1])->assertCreated();
+        $this->postJson('/api/cart/items', ['sku_id' => $second['sku']->id, 'quantity' => 2])->assertCreated();
+
+        $order = $this->postJson('/api/checkout/place-order', [
+            'address_id' => $address->id,
+            'payment_method' => 'card',
+            'payment_provider' => 'paystack',
+            'shipping_method' => 'standard',
+        ])->assertCreated()->json('order');
+
+        $initialized = $this->postJson('/api/payments/orders/' . $order['id'] . '/initialize')->assertOk()->json();
+        $paymentId = $initialized['payment']['id'];
+        $reference = $initialized['checkout']['reference'];
+
+        $this->postJson('/api/payments/' . $paymentId . '/verify', [
+            'reference' => $reference,
+        ])->assertOk()->assertJsonPath('result.status', 'paid');
+
+        $this->assertDatabaseHas('inventory_ledger_entries', [
+            'variant_id' => $first['sku']->id,
+            'reference_type' => 'order',
+            'reference_id' => $order['id'],
+            'movement_type' => 'order_deduction',
+            'quantity_out' => 1,
+        ]);
+
+        $this->assertDatabaseHas('inventory_ledger_entries', [
+            'variant_id' => $second['sku']->id,
+            'reference_type' => 'order',
+            'reference_id' => $order['id'],
+            'movement_type' => 'order_deduction',
+            'quantity_out' => 2,
+        ]);
+
+        Sanctum::actingAs($admin);
+        $this->getJson('/api/admin/inventory/ledger?movement_type=order_deduction')
+            ->assertOk()
+            ->assertJsonFragment(['movement_type' => 'order_deduction'])
+            ->assertJsonFragment(['reference_id' => $order['id']]);
     }
 }

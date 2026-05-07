@@ -6,10 +6,15 @@ use App\Http\Controllers\Controller;
 use App\Jobs\AdjustInventoryJob;
 use App\Jobs\ExportOrdersJob;
 use App\Models\DeliveryPartner;
+use App\Models\DispatchAssignment;
+use App\Models\DispatchRider;
 use App\Models\Order;
 use App\Models\OrderFulfillment;
+use App\Services\CurrencyFormatter;
 use App\Services\Logistics\LogisticsManager;
+use App\Services\OrderStatusEmailService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -24,7 +29,7 @@ class OrderController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Order::with(['user', 'createdByAdmin', 'items.sku.product.images', 'items.productOption', 'shippingAddress', 'deliveryPartner', 'shippingMethod', 'shippingZone', 'city', 'area', 'dispatchTimeSlot']);
+        $query = Order::with(['user', 'createdByAdmin', 'items.sku.product.images', 'items.productOption', 'shippingAddress', 'deliveryPartner', 'dispatchRider.user', 'currentDispatchAssignment', 'shippingMethod', 'shippingZone', 'city', 'area', 'dispatchTimeSlot']);
 
         // Search
         if ($request->filled('search')) {
@@ -46,6 +51,10 @@ class OrderController extends Controller
         // Filter by payment status
         if ($request->filled('payment_status')) {
             $query->where('payment_status', $request->payment_status);
+        }
+
+        if ($request->filled('dispatch_status')) {
+            $query->where('delivery_status', $request->dispatch_status);
         }
 
         // Filter by date range
@@ -79,6 +88,10 @@ class OrderController extends Controller
             'fulfillments',
             'payments',
             'deliveryPartner',
+            'dispatchRider.user',
+            'dispatchAssignments.rider.user',
+            'dispatchAssignments.assignedBy',
+            'currentDispatchAssignment',
             'shippingMethod',
             'shippingZone',
             'city',
@@ -96,9 +109,10 @@ class OrderController extends Controller
     public function updateStatus(Request $request, $id)
     {
         $order = Order::with('items.sku')->findOrFail($id);
+        $oldStatus = $order->status;
 
         $data = $request->validate([
-            'status' => 'required|in:pending,processing,shipped,delivered,cancelled,refunded',
+            'status' => 'required|in:pending,processing,packed,ready_for_dispatch,shipped,delivered,cancelled,refunded',
         ]);
 
         $order->update($data);
@@ -121,6 +135,12 @@ class OrderController extends Controller
             ]);
         }
 
+        app(OrderStatusEmailService::class)->notify($order->fresh(['user', 'items.sku.product']), [[
+            'type' => 'Order status',
+            'old' => $oldStatus,
+            'new' => $data['status'],
+        ]], $request->notes ?? null);
+
         return response()->json([
             'message' => 'Order status updated successfully',
             'order' => $order->load('fulfillments')
@@ -133,12 +153,19 @@ class OrderController extends Controller
     public function updatePaymentStatus(Request $request, $id)
     {
         $order = Order::findOrFail($id);
+        $oldPaymentStatus = $order->payment_status;
 
         $data = $request->validate([
             'payment_status' => 'required|in:pending,paid,failed,refunded',
         ]);
 
         $order->update($data);
+
+        app(OrderStatusEmailService::class)->notify($order->fresh(['user', 'items.sku.product']), [[
+            'type' => 'Payment status',
+            'old' => $oldPaymentStatus,
+            'new' => $data['payment_status'],
+        ]]);
 
         return response()->json([
             'message' => 'Payment status updated successfully',
@@ -149,6 +176,7 @@ class OrderController extends Controller
     public function assignDeliveryPartner(Request $request, int $id)
     {
         $order = Order::with(['deliveryPartner', 'shippingMethod', 'shippingZone'])->findOrFail($id);
+        $oldDeliveryStatus = $order->delivery_status;
 
         $data = $request->validate([
             'delivery_partner_id' => 'nullable|exists:delivery_partners,id',
@@ -183,6 +211,12 @@ class OrderController extends Controller
             ]);
         }
 
+        app(OrderStatusEmailService::class)->notify($order->fresh(['user', 'items.sku.product', 'deliveryPartner']), [[
+            'type' => 'Delivery status',
+            'old' => $oldDeliveryStatus,
+            'new' => $order->delivery_status,
+        ]], $order->dispatch_note);
+
         return response()->json([
             'message' => 'Delivery assignment updated successfully',
             'order' => $order->fresh(['deliveryPartner', 'shippingMethod', 'shippingZone']),
@@ -213,9 +247,10 @@ class OrderController extends Controller
     public function updateDeliveryStatus(Request $request, int $id)
     {
         $order = Order::findOrFail($id);
+        $oldDeliveryStatus = $order->delivery_status;
 
         $data = $request->validate([
-            'delivery_status' => 'required|string|in:pending_assignment,assigned,packed,shipped,in_transit,delivered,delivery_failed,returned,cancelled',
+            'delivery_status' => 'required|string|in:pending_assignment,assigned,accepted,rejected,packed,ready_for_dispatch,picked_up,shipped,in_transit,delivered,delivery_failed,returned,cancelled',
             'dispatch_note' => 'nullable|string|max:1000',
             'delivery_tracking_code' => 'nullable|string|max:120',
         ]);
@@ -233,7 +268,7 @@ class OrderController extends Controller
             'delivery_tracking_code' => $data['delivery_tracking_code'] ?? $order->delivery_tracking_code,
         ];
 
-        if ($nextStatus === 'shipped' && !$order->shipped_at) {
+        if (in_array($nextStatus, ['picked_up', 'shipped', 'in_transit'], true) && !$order->shipped_at) {
             $payload['shipped_at'] = now();
         }
 
@@ -243,9 +278,96 @@ class OrderController extends Controller
 
         $order->update($payload);
 
+        app(OrderStatusEmailService::class)->notify($order->fresh(['user', 'items.sku.product', 'deliveryPartner', 'dispatchRider.user']), [[
+            'type' => 'Delivery status',
+            'old' => $oldDeliveryStatus,
+            'new' => $nextStatus,
+        ]], $payload['dispatch_note'] ?? null);
+
         return response()->json([
             'message' => 'Delivery status updated successfully',
             'order' => $order->fresh(['deliveryPartner', 'shippingMethod', 'shippingZone']),
+        ]);
+    }
+
+    public function assignDispatchRider(Request $request, int $id)
+    {
+        $order = Order::query()
+            ->with(['currentDispatchAssignment', 'dispatchRider', 'deliveryPartner'])
+            ->findOrFail($id);
+        $oldDeliveryStatus = $order->delivery_status;
+
+        $data = $request->validate([
+            'dispatch_rider_id' => 'required|exists:dispatch_riders,id',
+            'dispatch_note' => 'nullable|string|max:1000',
+        ]);
+
+        $rider = DispatchRider::with('deliveryPartner')->findOrFail((int) $data['dispatch_rider_id']);
+
+        if ($rider->status !== 'active') {
+            throw ValidationException::withMessages([
+                'dispatch_rider_id' => ['Only active riders can be assigned.'],
+            ]);
+        }
+
+        $currentAssignment = $order->currentDispatchAssignment;
+        if ($currentAssignment && !in_array($currentAssignment->status, ['rejected', 'failed', 'cancelled', 'delivered'], true)) {
+            $currentAssignment->update(['status' => 'cancelled']);
+        }
+
+        $assignment = DispatchAssignment::create([
+            'order_id' => $order->id,
+            'dispatch_rider_id' => $rider->id,
+            'delivery_partner_id' => $rider->delivery_partner_id ?: $order->delivery_partner_id,
+            'assigned_by' => $request->user()?->id,
+            'previous_dispatch_rider_id' => $order->dispatch_rider_id,
+            'status' => 'assigned',
+            'assigned_at' => now(),
+        ]);
+
+        $order->update([
+            'dispatch_rider_id' => $rider->id,
+            'delivery_partner_id' => $rider->delivery_partner_id ?: $order->delivery_partner_id,
+            'delivery_status' => 'assigned',
+            'assigned_at' => now(),
+            'dispatch_note' => $data['dispatch_note'] ?? $order->dispatch_note,
+        ]);
+
+        app(OrderStatusEmailService::class)->notify($order->fresh(['user', 'items.sku.product', 'deliveryPartner', 'dispatchRider.user']), [[
+            'type' => 'Delivery status',
+            'old' => $oldDeliveryStatus,
+            'new' => 'assigned',
+        ]], $data['dispatch_note'] ?? null);
+
+        return response()->json([
+            'message' => 'Dispatch rider assigned successfully',
+            'order' => $order->fresh(['deliveryPartner', 'dispatchRider.user', 'dispatchAssignments.rider.user', 'currentDispatchAssignment']),
+            'assignment' => $assignment->load(['rider.user', 'deliveryPartner']),
+        ]);
+    }
+
+    public function terminalReceipt(int $id, CurrencyFormatter $currency)
+    {
+        $order = Order::with(['items.sku.product', 'user', 'shippingAddress', 'createdByAdmin'])
+            ->findOrFail($id);
+
+        $settings = Cache::remember('site_settings', 3600, function () {
+            return DB::table('settings')->pluck('value', 'key');
+        });
+
+        $html = view('receipts.terminal', [
+            'order' => $order,
+            'settings' => [
+                'site_name' => (string) ($settings['site_name'] ?? config('app.name')),
+                'site_phone' => (string) ($settings['site_phone'] ?? ''),
+                'site_email' => (string) ($settings['site_email'] ?? ''),
+            ],
+            'currency' => $currency,
+        ])->render();
+
+        return response($html, 200, [
+            'Content-Type' => 'text/html; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="order-' . $order->id . '-terminal-receipt.html"',
         ]);
     }
 

@@ -44,6 +44,19 @@
         <div class="flex justify-between text-base font-semibold border-t pt-2"><span>Total</span><span>{{ formatCurrency(total) }}</span></div>
         <Button class="mt-4 w-full" :loading="saving" @click="submit">Create Order</Button>
       </Card>
+
+      <Card v-if="createdOrder" :elevation="2" class="p-5 border border-emerald-200 bg-emerald-50">
+        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+          <div>
+            <h2 class="text-lg font-semibold text-primary">Order #{{ createdOrder.id }} created</h2>
+            <p class="text-sm text-secondary">Download the terminal receipt now or continue to the order details page.</p>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <Button icon="receipt-text-outline" @click="downloadReceipt(createdOrder.id)">Download Receipt</Button>
+            <Button variant="outline" icon="open-in-new" @click="goToOrder(createdOrder.id)">Open Order</Button>
+          </div>
+        </div>
+      </Card>
     </div>
   </AdminLayout>
 </template>
@@ -56,15 +69,19 @@ import Card from '../../components/ui/Card.vue';
 import Select from '../../components/ui/Select.vue';
 import Input from '../../components/ui/Input.vue';
 import Button from '../../components/ui/Button.vue';
+import { useSettingsStore } from '../../stores/settings';
 
 const toast = inject('toast');
 const saving = ref(false);
+const settingsStore = useSettingsStore();
+const formatCurrency = settingsStore.formatCurrency;
 
 const customers = ref([]);
 const products = ref([]);
 const cities = ref([]);
 const areas = ref([]);
 const slots = ref([]);
+const createdOrder = ref(null);
 
 const form = reactive({
   customer_id: '',
@@ -104,7 +121,7 @@ const cityOptions = computed(() => [
 
 const areaOptions = computed(() => [
   { value: '', label: 'Select area' },
-  ...areas.value.map((area) => ({ value: area.id, label: `${area.name} (${Number(area.delivery_fee || 0).toLocaleString()})` })),
+  ...areas.value.map((area) => ({ value: area.id, label: `${area.name} (${formatCurrency(area.delivery_fee || 0)})` })),
 ]);
 
 const slotOptions = computed(() => [
@@ -124,12 +141,6 @@ const selectedAreaFee = computed(() => {
 
 const subtotal = computed(() => form.items.reduce((sum, line) => sum + Number(line.price || 0) * Number(line.quantity || 0), 0));
 const total = computed(() => subtotal.value + selectedAreaFee.value);
-
-const formatCurrency = (value) => new Intl.NumberFormat('en-NG', {
-  style: 'currency',
-  currency: 'NGN',
-  minimumFractionDigits: 2,
-}).format(Number(value || 0));
 
 const loadInitial = async () => {
   const [customersRes, productsRes, citiesRes, slotsRes] = await Promise.all([
@@ -213,6 +224,7 @@ const submit = async () => {
 
     const { data } = await axios.post('/api/admin/orders', payload);
     toast?.success('Order created successfully.');
+    createdOrder.value = data.order || null;
 
     form.customer_id = '';
     form.city_id = '';
@@ -224,9 +236,6 @@ const submit = async () => {
     form.internal_note = '';
     form.items = [];
 
-    if (data.order?.id) {
-      window.location.assign(`/admin/orders/${data.order.id}`);
-    }
   } catch (error) {
     const errors = error.response?.data?.errors;
     const message = errors ? Object.values(errors).flat().join(' ') : error.response?.data?.message;
@@ -234,6 +243,23 @@ const submit = async () => {
   } finally {
     saving.value = false;
   }
+};
+
+const downloadReceipt = async (orderId) => {
+  const { data } = await axios.get(`/api/admin/orders/${orderId}/terminal-receipt`, {
+    responseType: 'blob',
+    headers: { Accept: 'text/html' },
+  });
+  const url = URL.createObjectURL(data);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `order-${orderId}-terminal-receipt.html`;
+  link.click();
+  URL.revokeObjectURL(url);
+};
+
+const goToOrder = (orderId) => {
+  window.location.assign(`/admin/orders/${orderId}`);
 };
 
 onMounted(loadInitial);

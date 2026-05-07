@@ -14,6 +14,7 @@ use App\Models\ShippingZone;
 use App\Models\ShippingZoneRule;
 use App\Models\ShippingMethod;
 use App\Models\DeliveryPartner;
+use App\Models\DispatchRider;
 use Spatie\Permission\Models\Role;
 
 class DatabaseSeeder extends Seeder
@@ -32,6 +33,7 @@ class DatabaseSeeder extends Seeder
         $adminRole = Role::firstOrCreate(['name' => 'Admin', 'guard_name' => 'sanctum']);
         $vendorRole = Role::firstOrCreate(['name' => 'Vendor', 'guard_name' => 'sanctum']);
         $customerRole = Role::firstOrCreate(['name' => 'Customer', 'guard_name' => 'sanctum']);
+        $dispatchRiderRole = Role::firstOrCreate(['name' => 'Dispatch Rider', 'guard_name' => 'sanctum']);
 
         // Create demo admin user and enforce demo credential consistency for local/dev seed runs.
         $admin = User::updateOrCreate(
@@ -263,7 +265,7 @@ class DatabaseSeeder extends Seeder
             ]
         );
 
-        DeliveryPartner::updateOrCreate(
+        $deliveryPartner = DeliveryPartner::updateOrCreate(
             ['name' => 'Lagos Dispatch Rider'],
             [
                 'phone' => '08030000000',
@@ -275,6 +277,29 @@ class DatabaseSeeder extends Seeder
                 'pricing_notes' => 'Manual dispatch rates apply for oversized orders.',
                 'status' => 'active',
                 'vehicle_type' => 'motorbike',
+            ]
+        );
+
+        $riderUser = User::updateOrCreate(
+            ['email' => 'rider@example.com'],
+            [
+                'name' => 'Demo Dispatch Rider',
+                'phone' => '08030000001',
+                'password' => Hash::make('password'),
+                'status' => 'active',
+            ]
+        );
+        $riderUser->syncRoles([$dispatchRiderRole]);
+
+        DispatchRider::updateOrCreate(
+            ['user_id' => $riderUser->id],
+            [
+                'delivery_partner_id' => $deliveryPartner->id,
+                'phone' => '08030000001',
+                'vehicle_type' => 'motorbike',
+                'vehicle_plate_number' => 'ASH-001',
+                'availability_status' => 'available',
+                'status' => 'active',
             ]
         );
 

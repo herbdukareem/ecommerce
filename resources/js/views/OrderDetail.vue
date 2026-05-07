@@ -45,6 +45,31 @@
           <div class="xl:col-span-4 space-y-6">
             <OrderSummaryCard :order="order" :format-currency="formatCurrency" :format-date="formatDate" />
 
+            <Card v-if="order.dispatch_rider" :elevation="1" class="p-5">
+              <h3 class="text-sm font-semibold text-primary">Assigned Rider</h3>
+              <div class="mt-3 flex items-center gap-3">
+                <img
+                  :src="order.dispatch_rider.profile_photo_url || '/images/placeholders/product-placeholder.svg'"
+                  :alt="order.dispatch_rider.user?.name || 'Dispatch rider'"
+                  class="h-14 w-14 rounded-lg object-cover border border-DEFAULT"
+                />
+                <div class="min-w-0">
+                  <p class="font-semibold text-primary truncate">{{ order.dispatch_rider.user?.name || 'Dispatch rider' }}</p>
+                  <p class="text-xs text-secondary">{{ humanize(order.dispatch_rider.vehicle_type) }}</p>
+                  <p v-if="order.dispatch_rider.phone" class="text-xs text-secondary">{{ order.dispatch_rider.phone }}</p>
+                </div>
+              </div>
+              <img
+                v-if="order.dispatch_rider.vehicle_image_url"
+                :src="order.dispatch_rider.vehicle_image_url"
+                alt="Assigned rider vehicle"
+                class="mt-3 h-28 w-full rounded-lg object-cover border border-DEFAULT"
+              />
+              <p v-if="order.dispatch_rider.vehicle_plate_number" class="text-xs text-secondary mt-2">
+                Plate: {{ order.dispatch_rider.vehicle_plate_number }}
+              </p>
+            </Card>
+
             <Card :elevation="1" class="p-5">
               <h3 class="text-sm font-semibold text-primary">Need to update this order?</h3>
               <p class="text-sm text-secondary mt-1">If your order has not entered shipping yet, you can cancel it below.</p>
@@ -137,6 +162,8 @@ const formatDate = (value, withMeridiem = false) => {
     minute: '2-digit',
   }).format(date);
 };
+
+const humanize = (value) => String(value || 'N/A').replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
 
 const loadOrder = async () => {
   errorMessage.value = '';

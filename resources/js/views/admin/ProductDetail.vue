@@ -90,7 +90,7 @@
               </div>
               <div>
                 <label class="text-sm font-medium text-gray-600">Price</label>
-                <p class="text-gray-900 mt-1 font-semibold">₦{{ formatPrice(product.price || product.base_price) }}</p>
+                <p class="text-gray-900 mt-1 font-semibold">{{ formatCurrency(product.price || product.base_price) }}</p>
               </div>
               <div>
                 <label class="text-sm font-medium text-gray-600">Option Mode</label>
@@ -132,7 +132,7 @@
                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">SKU Code</th>
                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Option</th>
                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Price</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Stock</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Available Stock</th>
                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Weight</th>
                   </tr>
@@ -141,9 +141,13 @@
                   <tr v-for="sku in product.skus" :key="sku.id">
                     <td class="px-4 py-3 text-sm text-gray-900">{{ sku.sku_code }}</td>
                     <td class="px-4 py-3 text-sm text-gray-900">{{ sku.option_label || sku.display_label || sku.attributes?.name || 'Default' }}</td>
-                    <td class="px-4 py-3 text-sm text-gray-900">₦{{ formatPrice(sku.price) }}</td>
-                    <td class="px-4 py-3 text-sm text-gray-900">{{ sku.stock_quantity || 0 }}</td>
-                    <td class="px-4 py-3 text-sm text-gray-900">{{ sku.active === false ? 'Inactive' : 'Active' }}</td>
+                    <td class="px-4 py-3 text-sm text-gray-900">{{ formatCurrency(sku.price) }}</td>
+                    <td class="px-4 py-3 text-sm">
+                      <span :class="stockBadgeClass(sku)">
+                        {{ Number(sku.available_stock || 0).toLocaleString() }}
+                      </span>
+                    </td>
+                    <td class="px-4 py-3 text-sm text-gray-900">{{ sku.active === false ? 'Inactive' : (Number(sku.available_stock || 0) <= 0 ? 'Out of stock' : 'Active') }}</td>
                     <td class="px-4 py-3 text-sm text-gray-900">{{ sku.weight || 0 }}kg</td>
                   </tr>
                 </tbody>
@@ -167,6 +171,7 @@ import { ref, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import axios from 'axios';
 import AdminLayout from '../../components/admin/AdminLayout.vue';
+import { useSettingsStore } from '../../stores/settings';
 
 const router = useRouter();
 const route = useRoute();
@@ -174,6 +179,8 @@ const route = useRoute();
 const product = ref(null);
 const loading = ref(false);
 const selectedImage = ref(null);
+const settingsStore = useSettingsStore();
+const formatCurrency = settingsStore.formatCurrency;
 
 const fetchProduct = async () => {
   loading.value = true;
@@ -194,11 +201,14 @@ const editProduct = () => {
   router.push(`/admin/products?edit=${route.params.id}`);
 };
 
-const formatPrice = (price) => {
-  return parseFloat(price || 0).toLocaleString('en-NG', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+const stockBadgeClass = (sku) => {
+  if (sku.active === false) {
+    return 'inline-flex px-2 py-1 rounded-full bg-gray-100 text-gray-700 font-medium';
+  }
+  if (Number(sku.available_stock || 0) <= 0) {
+    return 'inline-flex px-2 py-1 rounded-full bg-red-100 text-red-700 font-medium';
+  }
+  return 'inline-flex px-2 py-1 rounded-full bg-green-100 text-green-700 font-medium';
 };
 
 onMounted(() => {

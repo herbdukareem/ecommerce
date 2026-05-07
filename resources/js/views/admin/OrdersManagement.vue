@@ -1,24 +1,26 @@
 <template>
   <AdminLayout>
     <div class="space-y-6">
-      <!-- Header -->
-      <div class="flex items-center justify-between">
-        <div>
-          <h1 class="text-2xl font-bold text-gray-900">Orders Management</h1>
-          <p class="text-sm text-gray-600 mt-1">Track and manage customer orders</p>
+      <div class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500">Operations command center</p>
+            <h1 class="mt-1 text-3xl font-bold text-gray-900">Orders Management</h1>
+            <p class="text-sm text-gray-600 mt-1">Track customer demand, ordered products, payment health, and fulfillment readiness.</p>
+          </div>
+          <button
+            @click="exportOrders"
+            class="flex items-center justify-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
+          >
+            <i class="mdi mdi-download"></i>
+            Export Orders
+          </button>
         </div>
-        <button
-          @click="exportOrders"
-          class="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
-        >
-          <i class="mdi mdi-download"></i>
-          Export Orders
-        </button>
       </div>
 
       <!-- Statistics Cards -->
-      <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
-        <div class="bg-white rounded-lg border border-gray-200 p-4">
+      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
+        <div class="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
           <div class="flex items-center justify-between">
             <div>
               <p class="text-sm text-gray-600">Total Orders</p>
@@ -29,7 +31,7 @@
             </div>
           </div>
         </div>
-        <div class="bg-white rounded-lg border border-gray-200 p-4">
+        <div class="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
           <div class="flex items-center justify-between">
             <div>
               <p class="text-sm text-gray-600">Pending</p>
@@ -40,7 +42,7 @@
             </div>
           </div>
         </div>
-        <div class="bg-white rounded-lg border border-gray-200 p-4">
+        <div class="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
           <div class="flex items-center justify-between">
             <div>
               <p class="text-sm text-gray-600">Processing</p>
@@ -51,7 +53,7 @@
             </div>
           </div>
         </div>
-        <div class="bg-white rounded-lg border border-gray-200 p-4">
+        <div class="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
           <div class="flex items-center justify-between">
             <div>
               <p class="text-sm text-gray-600">Delivered</p>
@@ -62,11 +64,11 @@
             </div>
           </div>
         </div>
-        <div class="bg-white rounded-lg border border-gray-200 p-4">
+        <div class="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
           <div class="flex items-center justify-between">
             <div>
               <p class="text-sm text-gray-600">Revenue</p>
-              <p class="text-2xl font-bold text-gray-900 mt-1">₦{{ formatPrice(stats.total_revenue) }}</p>
+              <p class="text-2xl font-bold text-gray-900 mt-1">{{ formatCurrency(stats.total_revenue) }}</p>
             </div>
             <div class="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
               <i class="mdi mdi-currency-usd text-purple-600 text-2xl"></i>
@@ -76,8 +78,8 @@
       </div>
 
       <!-- Filters -->
-      <div class="bg-white rounded-lg border border-gray-200 p-4">
-        <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+      <div class="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-4">
           <!-- Search -->
           <div class="md:col-span-2">
             <div class="relative">
@@ -92,45 +94,50 @@
             </div>
           </div>
 
-          <!-- Status Filter -->
-          <select
+          <Select
             v-model="filters.status"
-            class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+            placeholder="All order statuses"
+            :options="statusOptions"
             @change="fetchOrders"
-          >
-            <option value="">All Status</option>
-            <option value="pending">Pending</option>
-            <option value="processing">Processing</option>
-            <option value="shipped">Shipped</option>
-            <option value="delivered">Delivered</option>
-            <option value="cancelled">Cancelled</option>
-          </select>
+          />
 
-          <!-- Payment Status Filter -->
-          <select
+          <Select
             v-model="filters.payment_status"
-            class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+            placeholder="All payment statuses"
+            :options="paymentStatusOptions"
             @change="fetchOrders"
-          >
-            <option value="">All Payments</option>
-            <option value="pending">Pending</option>
-            <option value="paid">Paid</option>
-            <option value="failed">Failed</option>
-            <option value="refunded">Refunded</option>
-          </select>
+          />
 
-          <!-- Date Range -->
+          <Select
+            v-model="filters.dispatch_status"
+            placeholder="All dispatch statuses"
+            :options="dispatchStatusOptions"
+            @change="fetchOrders"
+          />
+
           <input
             v-model="filters.start_date"
             type="date"
             class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
             @change="fetchOrders"
           />
+
+          <input
+            v-model="filters.end_date"
+            type="date"
+            class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+            @change="fetchOrders"
+          />
+        </div>
+
+        <div class="mt-4 flex items-center justify-between gap-3 text-sm">
+          <p class="text-gray-500">Open an order to process fulfillment with full item visibility.</p>
+          <button class="font-medium text-orange-600 hover:text-orange-700" @click="clearFilters">Clear filters</button>
         </div>
       </div>
 
       <!-- Orders Table -->
-      <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      <div class="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
         <div v-if="loading" class="p-8 text-center">
           <i class="mdi mdi-loading mdi-spin text-4xl text-orange-500"></i>
           <p class="text-gray-600 mt-2">Loading orders...</p>
@@ -141,17 +148,18 @@
           <p class="text-gray-600 mt-2">No orders found</p>
         </div>
 
-        <table v-else class="w-full">
+        <div v-else class="overflow-x-auto">
+        <table class="w-full min-w-[1120px]">
           <thead class="bg-gray-50 border-b border-gray-200">
             <tr>
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Order ID
+                Order
               </th>
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Customer
               </th>
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Items
+                Ordered Items
               </th>
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Total
@@ -160,10 +168,10 @@
                 Payment
               </th>
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Status
+                Fulfillment
               </th>
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Date
+                Dispatch
               </th>
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Actions
@@ -173,38 +181,54 @@
           <tbody class="bg-white divide-y divide-gray-200">
             <tr v-for="order in orders" :key="order.id" class="hover:bg-gray-50">
               <td class="px-6 py-4 whitespace-nowrap">
-                <div class="text-sm font-medium text-gray-900">#{{ order.id }}</div>
+                <div class="text-sm font-semibold text-gray-900">#{{ order.id }}</div>
+                <div class="mt-1 text-xs text-gray-500">{{ formatDate(order.placed_at || order.created_at) }}</div>
+                <div v-if="order.created_by_admin" class="mt-1 text-xs text-gray-500">By {{ order.created_by_admin.name }}</div>
               </td>
               <td class="px-6 py-4">
-                <div class="text-sm font-medium text-gray-900">{{ order.user?.name }}</div>
-                <div class="text-xs text-gray-500">{{ order.user?.email }}</div>
+                <div class="text-sm font-semibold text-gray-900">{{ order.user?.name || 'Guest customer' }}</div>
+                <div class="text-xs text-gray-500">{{ order.user?.email || 'No email' }}</div>
+                <div class="text-xs text-gray-500">{{ order.city_name || order.city?.name || 'N/A' }}<span v-if="order.area_name || order.area?.name">, {{ order.area_name || order.area?.name }}</span></div>
               </td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                {{ order.items?.length || 0 }} items
+              <td class="px-6 py-4">
+                <div class="space-y-2">
+                  <div v-for="item in visibleOrderItems(order)" :key="item.id || `${order.id}-${itemProductName(item)}`" class="flex items-center gap-3">
+                    <img
+                      :src="itemImage(item)"
+                      :alt="itemProductName(item)"
+                      class="h-10 w-10 rounded-lg border border-gray-200 object-cover bg-gray-50"
+                      @error="onImageError"
+                    />
+                    <div class="min-w-0">
+                      <p class="truncate text-sm font-medium text-gray-900">{{ itemProductName(item) }}</p>
+                      <p class="text-xs text-gray-500">
+                        {{ itemOptionLabel(item) }} · Qty {{ Number(item.quantity || 0) }}
+                      </p>
+                    </div>
+                  </div>
+                  <p v-if="remainingItemCount(order) > 0" class="text-xs font-medium text-orange-600">
+                    +{{ remainingItemCount(order) }} more product{{ remainingItemCount(order) === 1 ? '' : 's' }}
+                  </p>
+                  <p v-if="!(order.items || []).length" class="text-sm text-gray-500">No order items loaded</p>
+                </div>
               </td>
               <td class="px-6 py-4 whitespace-nowrap">
-                <div class="text-sm font-medium text-gray-900">₦{{ formatPrice(order.total) }}</div>
+                <div class="text-sm font-medium text-gray-900">{{ formatCurrency(order.total) }}</div>
+                <div class="text-xs text-gray-500">{{ totalQuantity(order) }} unit{{ totalQuantity(order) === 1 ? '' : 's' }}</div>
               </td>
               <td class="px-6 py-4 whitespace-nowrap">
-                <span
-                  :class="{
-                    'bg-green-100 text-green-800': order.payment_status === 'paid',
-                    'bg-yellow-100 text-yellow-800': order.payment_status === 'pending',
-                    'bg-red-100 text-red-800': order.payment_status === 'failed',
-                    'bg-gray-100 text-gray-800': order.payment_status === 'refunded',
-                  }"
-                  class="px-2 py-1 text-xs font-medium rounded-full"
-                >
-                  {{ order.payment_status }}
+                <span :class="paymentClass(order.payment_status)" class="px-2.5 py-1 text-xs font-semibold rounded-full">
+                  {{ humanize(order.payment_status) }}
                 </span>
               </td>
-              <td class="px-6 py-4 whitespace-nowrap">
+              <td class="px-6 py-4 whitespace-nowrap min-w-[190px]">
                 <select
                   :value="order.status"
                   @change="updateOrderStatus(order, $event.target.value)"
                   :class="{
                     'bg-yellow-100 text-yellow-800 border-yellow-300': order.status === 'pending',
                     'bg-blue-100 text-blue-800 border-blue-300': order.status === 'processing',
+                    'bg-indigo-100 text-indigo-800 border-indigo-300': ['packed', 'ready_for_dispatch'].includes(order.status),
                     'bg-purple-100 text-purple-800 border-purple-300': order.status === 'shipped',
                     'bg-green-100 text-green-800 border-green-300': order.status === 'delivered',
                     'bg-red-100 text-red-800 border-red-300': order.status === 'cancelled',
@@ -213,26 +237,35 @@
                 >
                   <option value="pending">Pending</option>
                   <option value="processing">Processing</option>
+                  <option value="packed">Packed</option>
+                  <option value="ready_for_dispatch">Ready for Dispatch</option>
                   <option value="shipped">Shipped</option>
                   <option value="delivered">Delivered</option>
                   <option value="cancelled">Cancelled</option>
                 </select>
               </td>
               <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                {{ formatDate(order.created_at) }}
+                <div class="flex flex-col gap-1">
+                  <span :class="dispatchClass(order.delivery_status)" class="w-fit px-2.5 py-1 text-xs font-semibold rounded-full">
+                    {{ humanize(order.delivery_status || 'pending_assignment') }}
+                  </span>
+                  <span class="text-xs text-gray-500">{{ order.dispatch_rider?.user?.name || order.delivery_partner?.name || 'Unassigned' }}</span>
+                </div>
               </td>
               <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
                 <button
                   @click="viewOrder(order)"
-                  class="text-blue-600 hover:text-blue-900"
-                  title="View Details"
+                  class="inline-flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-2 text-blue-700 hover:bg-blue-100"
+                  title="View order workspace"
                 >
                   <i class="mdi mdi-eye"></i>
+                  View
                 </button>
               </td>
             </tr>
           </tbody>
         </table>
+        </div>
       </div>
 
       <!-- Pagination -->
@@ -264,8 +297,12 @@ import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import axios from 'axios';
 import AdminLayout from '../../components/admin/AdminLayout.vue';
+import Select from '../../components/ui/Select.vue';
+import { useSettingsStore } from '../../stores/settings';
 
 const router = useRouter();
+const settingsStore = useSettingsStore();
+const formatCurrency = settingsStore.formatCurrency;
 
 const orders = ref([]);
 const loading = ref(false);
@@ -284,9 +321,41 @@ const filters = ref({
   search: '',
   status: '',
   payment_status: '',
+  dispatch_status: '',
   start_date: '',
   end_date: '',
 });
+
+const statusOptions = [
+  { value: '', label: 'All order statuses' },
+  { value: 'pending', label: 'Pending' },
+  { value: 'processing', label: 'Processing' },
+  { value: 'packed', label: 'Packed' },
+  { value: 'ready_for_dispatch', label: 'Ready for Dispatch' },
+  { value: 'shipped', label: 'Shipped' },
+  { value: 'delivered', label: 'Delivered' },
+  { value: 'cancelled', label: 'Cancelled' },
+];
+
+const paymentStatusOptions = [
+  { value: '', label: 'All payment statuses' },
+  { value: 'pending', label: 'Pending' },
+  { value: 'paid', label: 'Paid' },
+  { value: 'failed', label: 'Failed' },
+  { value: 'refunded', label: 'Refunded' },
+];
+
+const dispatchStatusOptions = [
+  { value: '', label: 'All dispatch statuses' },
+  { value: 'pending_assignment', label: 'Pending Assignment' },
+  { value: 'assigned', label: 'Assigned' },
+  { value: 'accepted', label: 'Accepted' },
+  { value: 'picked_up', label: 'Picked Up' },
+  { value: 'in_transit', label: 'In Transit' },
+  { value: 'delivered', label: 'Delivered' },
+  { value: 'delivery_failed', label: 'Delivery Failed' },
+  { value: 'cancelled', label: 'Cancelled' },
+];
 
 const pagination = ref({
   current_page: 1,
@@ -306,6 +375,7 @@ const fetchOrders = async () => {
         search: filters.value.search,
         status: filters.value.status,
         payment_status: filters.value.payment_status,
+        dispatch_status: filters.value.dispatch_status,
         start_date: filters.value.start_date,
         end_date: filters.value.end_date,
         page: pagination.value.current_page,
@@ -368,6 +438,19 @@ const viewOrder = (order) => {
   router.push(`/admin/orders/${order.id}`);
 };
 
+const clearFilters = () => {
+  filters.value = {
+    search: '',
+    status: '',
+    payment_status: '',
+    dispatch_status: '',
+    start_date: '',
+    end_date: '',
+  };
+  pagination.value.current_page = 1;
+  fetchOrders();
+};
+
 // Export orders
 const exportOrders = async () => {
   try {
@@ -428,13 +511,49 @@ const paginationPages = computed(() => {
   return pages;
 });
 
-// Format price
-const formatPrice = (price) => {
-  return new Intl.NumberFormat('en-NG').format(price);
+const placeholderImage = '/images/placeholders/product-placeholder.svg';
+
+const humanize = (value) => String(value || 'N/A').replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+
+const visibleOrderItems = (order) => (order.items || []).slice(0, 2);
+
+const remainingItemCount = (order) => Math.max((order.items || []).length - visibleOrderItems(order).length, 0);
+
+const totalQuantity = (order) => (order.items || []).reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+
+const itemProductName = (item) => item?.product_name_snapshot || item?.sku?.product?.title || 'Product';
+
+const itemOptionLabel = (item) => item?.option_label_snapshot || item?.product_option?.display_label || item?.sku?.display_label || item?.sku?.code || 'Standard';
+
+const itemImage = (item) => item?.image_snapshot || item?.sku?.product?.image || item?.sku?.product?.images?.[0]?.image_url || placeholderImage;
+
+const onImageError = (event) => {
+  if (event?.target) {
+    event.target.src = placeholderImage;
+  }
 };
+
+const paymentClass = (status) => ({
+  paid: 'bg-green-100 text-green-800',
+  pending: 'bg-yellow-100 text-yellow-800',
+  failed: 'bg-red-100 text-red-800',
+  refunded: 'bg-gray-100 text-gray-800',
+}[status] || 'bg-gray-100 text-gray-800');
+
+const dispatchClass = (status) => ({
+  delivered: 'bg-green-100 text-green-800',
+  in_transit: 'bg-blue-100 text-blue-800',
+  picked_up: 'bg-indigo-100 text-indigo-800',
+  accepted: 'bg-cyan-100 text-cyan-800',
+  assigned: 'bg-purple-100 text-purple-800',
+  pending_assignment: 'bg-yellow-100 text-yellow-800',
+  delivery_failed: 'bg-red-100 text-red-800',
+  cancelled: 'bg-red-100 text-red-800',
+}[status] || 'bg-gray-100 text-gray-800');
 
 // Format date
 const formatDate = (date) => {
+  if (!date) return 'N/A';
   return new Date(date).toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'short',

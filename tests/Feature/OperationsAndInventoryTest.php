@@ -3,11 +3,17 @@
 namespace Tests\Feature;
 
 use App\Models\DispatchTimeSlot;
+use App\Models\DeliveryPartner;
+use App\Models\DispatchAssignment;
+use App\Models\DispatchRider;
 use App\Models\OperationArea;
 use App\Models\OperationCity;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\ProductImage;
+use App\Models\Sku;
+use App\Models\Stock;
+use App\Services\CurrencyFormatter;
 use Carbon\Carbon;
 use Database\Seeders\PermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -238,6 +244,220 @@ class OperationsAndInventoryTest extends TestCase
         $this->getJson('/api/admin/inventory/expiry-alerts?bucket=30_days')
             ->assertOk()
             ->assertJsonFragment(['id' => $batchId]);
+    }
+
+    public function test_admin_products_index_uses_central_inventory_available_stock(): void
+    {
+        $admin = $this->makeUserWithRole('Admin', 'admin-products-stock@test.com');
+        $vendor = $this->makeUserWithRole('Vendor', 'vendor-products-stock@test.com');
+
+        $simple = $this->makeProductWithStock($vendor);
+        $optioned = $this->makeOptionedProductWithStock($vendor);
+
+        // Simple product stock truth source: 14 on hand, 4 reserved => 10 available.
+        $simple['sku']->update(['stock_quantity' => 99999]);
+        Stock::query()->where('sku_id', $simple['sku']->id)->update([
+            'on_hand' => 14,
+            'reserved' => 4,
+        ]);
+
+        // Optioned product stock truth source: first 18-5=13, second 6-6=0 => total 13.
+        $firstOption = $optioned['options'][0];
+        $secondOption = $optioned['options'][1];
+
+        $firstOption->update(['stock_quantity' => 50000]);
+        $secondOption->update(['stock_quantity' => 50000]);
+
+        Stock::query()->where('sku_id', $firstOption->id)->update([
+            'on_hand' => 18,
+            'reserved' => 5,
+        ]);
+        Stock::query()->where('sku_id', $secondOption->id)->update([
+            'on_hand' => 6,
+            'reserved' => 6,
+        ]);
+
+        // Inactive SKU should be ignored by products index stock aggregation.
+        $inactiveSku = Sku::create([
+            'product_id' => $optioned['product']->id,
+            'sku_code' => 'INACTIVE-' . strtoupper(uniqid()),
+            'price' => 7000,
+            'active' => false,
+            'stock_quantity' => 1000,
+        ]);
+        Stock::create([
+            'sku_id' => $inactiveSku->id,
+            'warehouse_id' => $optioned['warehouse']->id,
+            'on_hand' => 500,
+            'reserved' => 0,
+        ]);
+
+        Sanctum::actingAs($admin);
+
+        $response = $this->getJson('/api/admin/products')
+            ->assertOk()
+            ->json('data');
+
+        $simpleRow = collect($response)->firstWhere('id', $simple['product']->id);
+        $optionedRow = collect($response)->firstWhere('id', $optioned['product']->id);
+
+        $this->assertNotNull($simpleRow);
+        $this->assertNotNull($optionedRow);
+
+        $this->assertSame(10, (int) ($simpleRow['available_stock'] ?? -1));
+        $this->assertSame(13, (int) ($optionedRow['available_stock'] ?? -1));
+        $this->assertSame(2, (int) ($optionedRow['active_sku_count'] ?? -1));
+    }
+
+    public function test_admin_product_detail_exposes_sku_available_stock_from_stocks(): void
+    {
+        $admin = $this->makeUserWithRole('Admin', 'admin-product-detail-stock@test.com');
+        $vendor = $this->makeUserWithRole('Vendor', 'vendor-product-detail-stock@test.com');
+        $commerce = $this->makeOptionedProductWithStock($vendor);
+
+        Stock::query()->where('sku_id', $commerce['options'][0]->id)->update(['on_hand' => 12, 'reserved' => 3]);
+
+        Sanctum::actingAs($admin);
+
+        $this->getJson('/api/admin/products/' . $commerce['product']->id)
+            ->assertOk()
+            ->assertJsonFragment([
+                'id' => $commerce['options'][0]->id,
+                'available_stock' => 9,
+            ]);
+    }
+
+    public function test_currency_formatter_uses_settings(): void
+    {
+        DB::table('settings')->updateOrInsert(['key' => 'currency_symbol'], ['value' => 'USD ', 'updated_at' => now()]);
+        DB::table('settings')->updateOrInsert(['key' => 'currency'], ['value' => 'USD', 'updated_at' => now()]);
+
+        $this->assertSame('USD 1,234.50', app(CurrencyFormatter::class)->format(1234.5));
+    }
+
+    public function test_admin_can_download_terminal_receipt(): void
+    {
+        $admin = $this->makeUserWithRole('Admin', 'admin-receipt@test.com');
+        $customer = $this->makeUserWithRole('Customer', 'customer-receipt@test.com');
+        $vendor = $this->makeUserWithRole('Vendor', 'vendor-receipt@test.com');
+        $commerce = $this->makeProductWithStock($vendor);
+
+        $order = Order::create([
+            'user_id' => $customer->id,
+            'created_by_admin_id' => $admin->id,
+            'status' => 'processing',
+            'payment_status' => 'paid',
+            'payment_mode' => 'cash',
+            'subtotal' => 200,
+            'delivery_fee' => 50,
+            'tax' => 0,
+            'total' => 250,
+            'placed_at' => now(),
+        ]);
+
+        OrderItem::create([
+            'order_id' => $order->id,
+            'sku_id' => $commerce['sku']->id,
+            'quantity' => 2,
+            'price_snapshot' => 100,
+            'weight_snapshot' => 1,
+            'length_snapshot' => 1,
+            'width_snapshot' => 1,
+            'height_snapshot' => 1,
+        ]);
+
+        Sanctum::actingAs($admin);
+
+        $this->get('/api/admin/orders/' . $order->id . '/terminal-receipt', ['Accept' => 'text/html'])
+            ->assertOk()
+            ->assertHeader('content-disposition')
+            ->assertSee('Order #' . $order->id, false)
+            ->assertSee('Thank you for shopping with us.', false);
+    }
+
+    public function test_dispatch_rider_creation_assignment_and_rider_restrictions(): void
+    {
+        $admin = $this->makeUserWithRole('Admin', 'admin-dispatch@test.com');
+        $customer = $this->makeUserWithRole('Customer', 'customer-dispatch@test.com');
+        $vendor = $this->makeUserWithRole('Vendor', 'vendor-dispatch@test.com');
+        $commerce = $this->makeProductWithStock($vendor);
+        $partner = DeliveryPartner::create([
+            'name' => 'Test Logistics',
+            'phone' => '08030000000',
+            'coverage_cities' => ['lagos'],
+            'status' => 'active',
+        ]);
+
+        Sanctum::actingAs($admin);
+
+        $riderResponse = $this->postJson('/api/admin/dispatch-riders', [
+            'name' => 'Rider One',
+            'email' => 'rider-one@test.com',
+            'phone' => '08030000001',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+            'delivery_partner_id' => $partner->id,
+            'vehicle_type' => 'motorbike',
+            'status' => 'active',
+        ])->assertCreated();
+
+        $secondRiderResponse = $this->postJson('/api/admin/dispatch-riders', [
+            'name' => 'Rider Two',
+            'email' => 'rider-two@test.com',
+            'phone' => '08030000002',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+            'vehicle_type' => 'motorbike',
+            'status' => 'active',
+        ])->assertCreated();
+
+        $order = Order::create([
+            'user_id' => $customer->id,
+            'status' => 'ready_for_dispatch',
+            'payment_status' => 'paid',
+            'subtotal' => 100,
+            'total' => 100,
+            'placed_at' => now(),
+        ]);
+
+        OrderItem::create([
+            'order_id' => $order->id,
+            'sku_id' => $commerce['sku']->id,
+            'quantity' => 1,
+            'price_snapshot' => 100,
+            'weight_snapshot' => 1,
+            'length_snapshot' => 1,
+            'width_snapshot' => 1,
+            'height_snapshot' => 1,
+        ]);
+
+        $assignment = $this->putJson('/api/admin/orders/' . $order->id . '/dispatch-rider', [
+            'dispatch_rider_id' => $riderResponse->json('rider.id'),
+        ])->assertOk()->json('assignment');
+
+        $riderTwoUser = DispatchRider::find($secondRiderResponse->json('rider.id'))->user;
+        Sanctum::actingAs($riderTwoUser);
+        $this->putJson('/api/dispatch/assignments/' . $assignment['id'], ['status' => 'accepted'])
+            ->assertNotFound();
+
+        $riderOneUser = DispatchRider::find($riderResponse->json('rider.id'))->user;
+        Sanctum::actingAs($riderOneUser);
+        $this->putJson('/api/dispatch/assignments/' . $assignment['id'], [
+            'status' => 'rejected',
+            'rejection_reason' => 'Vehicle fault',
+        ])->assertOk();
+
+        Sanctum::actingAs($admin);
+        $this->putJson('/api/admin/orders/' . $order->id . '/dispatch-rider', [
+            'dispatch_rider_id' => $secondRiderResponse->json('rider.id'),
+        ])->assertOk();
+
+        $this->assertDatabaseHas('dispatch_assignments', [
+            'id' => $assignment['id'],
+            'status' => 'rejected',
+            'rejection_reason' => 'Vehicle fault',
+        ]);
+        $this->assertSame(2, DispatchAssignment::where('order_id', $order->id)->count());
     }
 
     public function test_profit_margin_report_returns_summary(): void

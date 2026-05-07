@@ -31,6 +31,7 @@ class Sku extends Model
     protected $appends = [
         'display_label',
         'primary_image_url',
+        'available_stock',
     ];
 
     protected static function booted(): void
@@ -117,5 +118,12 @@ class Sku extends Model
         }
 
         return $this->image_path ? \Storage::url($this->image_path) : null;
+    }
+
+    public function getAvailableStockAttribute(): int
+    {
+        $stocks = $this->relationLoaded('stocks') ? $this->stocks : $this->stocks()->get();
+
+        return (int) $stocks->sum(fn (Stock $stock) => max(0, (int) $stock->on_hand - (int) $stock->reserved));
     }
 }

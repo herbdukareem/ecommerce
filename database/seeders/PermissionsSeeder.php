@@ -18,11 +18,17 @@ class PermissionsSeeder extends Seeder
 
         // Create permissions
         $permissions = [
+            'dashboard.view',
+
             // Product permissions
             'view products',
             'create products',
             'edit products',
             'delete products',
+            'product.view',
+            'product.create',
+            'product.update',
+            'product.delete',
             
             // Category permissions
             'view categories',
@@ -42,19 +48,39 @@ class PermissionsSeeder extends Seeder
             'edit orders',
             'delete orders',
             'fulfill orders',
+            'order.view',
+            'order.update',
+            'order.receipt.download',
+            'admin-order.create',
             
             // Shipping permissions
             'view shipping',
             'edit shipping',
+            'delivery-partner.view',
+            'delivery-partner.create',
+            'delivery-partner.update',
+            'dispatch-rider.view',
+            'dispatch-rider.create',
+            'dispatch-rider.update',
+            'dispatch-assignment.manage',
+            'dispatch-assignment.update-own',
             
             // Settings permissions
             'view settings',
             'edit settings',
+            'settings.view',
+            'settings.update',
             
             // User permissions
             'view users',
             'edit users',
             'delete users',
+            'user.view',
+            'user.update',
+            'role.view',
+            'role.manage',
+            'permission.view',
+            'permission.manage',
 
             // New operations permissions
             'dispatch-time.view',
@@ -69,7 +95,6 @@ class PermissionsSeeder extends Seeder
             'area.create',
             'area.update',
             'area.delete',
-            'admin-order.create',
             'product-image.manage',
             'product-option.view',
             'product-option.create',
@@ -80,6 +105,10 @@ class PermissionsSeeder extends Seeder
             'inventory.ledger.view',
             'inventory.expiry.manage',
             'profit-report.view',
+            'analytics.view',
+            'payment.view',
+            'payment.update',
+            'report.view',
         ];
 
         foreach ($permissions as $permission) {
@@ -87,12 +116,74 @@ class PermissionsSeeder extends Seeder
         }
 
         // Create roles and assign permissions
+        $superAdminRole = Role::firstOrCreate(['name' => 'Super Admin', 'guard_name' => 'sanctum']);
         $adminRole = Role::firstOrCreate(['name' => 'Admin', 'guard_name' => 'sanctum']);
         $vendorRole = Role::firstOrCreate(['name' => 'Vendor', 'guard_name' => 'sanctum']);
         $customerRole = Role::firstOrCreate(['name' => 'Customer', 'guard_name' => 'sanctum']);
+        $inventoryRole = Role::firstOrCreate(['name' => 'Inventory Manager', 'guard_name' => 'sanctum']);
+        $salesRole = Role::firstOrCreate(['name' => 'Sales/Admin Order Officer', 'guard_name' => 'sanctum']);
+        $dispatchManagerRole = Role::firstOrCreate(['name' => 'Dispatch Manager', 'guard_name' => 'sanctum']);
+        $dispatchRiderRole = Role::firstOrCreate(['name' => 'Dispatch Rider', 'guard_name' => 'sanctum']);
+        $financeRole = Role::firstOrCreate(['name' => 'Accountant/Finance', 'guard_name' => 'sanctum']);
 
-        // Admin gets all permissions
+        // Super Admin and existing Admin users retain full access after seeding.
+        $superAdminRole->syncPermissions(Permission::all());
         $adminRole->syncPermissions(Permission::all());
+
+        $inventoryRole->syncPermissions([
+            'dashboard.view',
+            'inventory.view',
+            'inventory.add-stock',
+            'inventory.ledger.view',
+            'inventory.expiry.manage',
+            'product.view',
+            'view products',
+            'product-option.view',
+            'profit-report.view',
+        ]);
+
+        $salesRole->syncPermissions([
+            'dashboard.view',
+            'order.view',
+            'order.update',
+            'order.receipt.download',
+            'admin-order.create',
+            'view orders',
+            'edit orders',
+            'view products',
+        ]);
+
+        $dispatchManagerRole->syncPermissions([
+            'dashboard.view',
+            'order.view',
+            'order.update',
+            'delivery-partner.view',
+            'delivery-partner.create',
+            'delivery-partner.update',
+            'dispatch-rider.view',
+            'dispatch-rider.create',
+            'dispatch-rider.update',
+            'dispatch-assignment.manage',
+            'dispatch-time.view',
+            'dispatch-time.create',
+            'dispatch-time.update',
+            'dispatch-time.delete',
+        ]);
+
+        $dispatchRiderRole->syncPermissions([
+            'dispatch-assignment.update-own',
+        ]);
+
+        $financeRole->syncPermissions([
+            'dashboard.view',
+            'order.view',
+            'payment.view',
+            'payment.update',
+            'profit-report.view',
+            'analytics.view',
+            'report.view',
+            'order.receipt.download',
+        ]);
 
         // Vendor gets limited permissions
         $vendorRole->syncPermissions([

@@ -19,6 +19,8 @@ Route::get('/health', [App\Http\Controllers\ObservabilityController::class, 'hea
 
 Route::middleware('throttle:10,1')->group(function () {
     Route::post('/auth/register', [App\Http\Controllers\AuthController::class, 'register']);
+    Route::post('/auth/register/verify', [App\Http\Controllers\AuthController::class, 'verifyRegistration']);
+    Route::post('/auth/register/resend-code', [App\Http\Controllers\AuthController::class, 'resendRegistrationCode']);
     Route::post('/auth/login', [App\Http\Controllers\AuthController::class, 'login']);
     Route::post('/auth/forgot-password', [App\Http\Controllers\AuthController::class, 'forgotPassword']);
     Route::post('/auth/reset-password', [App\Http\Controllers\AuthController::class, 'resetPassword']);
@@ -33,6 +35,7 @@ Route::get('/locations/autocomplete', [App\Http\Controllers\LocationController::
 Route::get('/checkout/cities', [App\Http\Controllers\CheckoutController::class, 'operationalCities']);
 Route::get('/checkout/areas', [App\Http\Controllers\CheckoutController::class, 'operationalAreas']);
 Route::get('/checkout/dispatch-time-slots', [App\Http\Controllers\CheckoutController::class, 'dispatchTimeSlots']);
+Route::get('/settings/currency', [App\Http\Controllers\Admin\SettingsController::class, 'getCurrency']);
 
 // Public catalog routes (no auth required)
 Route::get('/products', [App\Http\Controllers\CatalogController::class, 'index']);
@@ -78,6 +81,11 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::post('/orders/{id}/cancel', [App\Http\Controllers\OrderController::class, 'cancel']);
     });
 
+    Route::prefix('dispatch')->middleware('role:Dispatch Rider')->group(function () {
+        Route::get('/assignments', [App\Http\Controllers\DispatchAssignmentController::class, 'myAssignments']);
+        Route::put('/assignments/{assignmentId}', [App\Http\Controllers\DispatchAssignmentController::class, 'update']);
+    });
+
     // Vendor/Admin Product Management
     Route::prefix('vendor')->middleware('vendor')->group(function () {
         Route::get('/products', [App\Http\Controllers\ProductController::class, 'index']);
@@ -117,6 +125,11 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
         // User Management
         Route::get('/users', [App\Http\Controllers\AdminController::class, 'users']);
+        Route::get('/roles-permissions', [App\Http\Controllers\Admin\RolePermissionController::class, 'index'])->middleware('can:role.view');
+        Route::post('/roles', [App\Http\Controllers\Admin\RolePermissionController::class, 'storeRole'])->middleware('can:role.manage');
+        Route::put('/roles/{id}/permissions', [App\Http\Controllers\Admin\RolePermissionController::class, 'updateRolePermissions'])->middleware('can:role.manage');
+        Route::get('/role-users', [App\Http\Controllers\Admin\RolePermissionController::class, 'users'])->middleware('can:user.view');
+        Route::put('/users/{id}/roles', [App\Http\Controllers\Admin\RolePermissionController::class, 'updateUserRoles'])->middleware('can:role.manage');
 
         // Product Management
         Route::get('/products', [App\Http\Controllers\Admin\ProductController::class, 'index']);
@@ -166,6 +179,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
         // Settings Management
         Route::get('/settings', [App\Http\Controllers\Admin\SettingsController::class, 'index']);
         Route::put('/settings', [App\Http\Controllers\Admin\SettingsController::class, 'update']);
+        Route::post('/settings/mail/test', [App\Http\Controllers\Admin\SettingsController::class, 'testMail']);
         Route::get('/settings/currency', [App\Http\Controllers\Admin\SettingsController::class, 'getCurrency']);
         Route::put('/settings/currency', [App\Http\Controllers\Admin\SettingsController::class, 'updateCurrency']);
 
@@ -183,9 +197,11 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('/orders/customers', [App\Http\Controllers\Admin\AdminOrderCreationController::class, 'customers'])->middleware('can:admin-order.create');
         Route::get('/orders/products', [App\Http\Controllers\Admin\AdminOrderCreationController::class, 'products'])->middleware('can:admin-order.create');
         Route::get('/orders/{id}', [App\Http\Controllers\Admin\OrderController::class, 'show']);
+        Route::get('/orders/{id}/terminal-receipt', [App\Http\Controllers\Admin\OrderController::class, 'terminalReceipt'])->middleware('can:order.receipt.download');
         Route::put('/orders/{id}/status', [App\Http\Controllers\Admin\OrderController::class, 'updateStatus']);
         Route::put('/orders/{id}/payment-status', [App\Http\Controllers\Admin\OrderController::class, 'updatePaymentStatus']);
         Route::put('/orders/{id}/delivery-assignment', [App\Http\Controllers\Admin\OrderController::class, 'assignDeliveryPartner']);
+        Route::put('/orders/{id}/dispatch-rider', [App\Http\Controllers\Admin\OrderController::class, 'assignDispatchRider'])->middleware('can:dispatch-assignment.manage');
         Route::put('/orders/{id}/delivery-status', [App\Http\Controllers\Admin\OrderController::class, 'updateDeliveryStatus']);
 
         // Delivery partners
@@ -193,6 +209,14 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::post('/delivery-partners', [App\Http\Controllers\Admin\DeliveryPartnerController::class, 'store']);
         Route::put('/delivery-partners/{id}', [App\Http\Controllers\Admin\DeliveryPartnerController::class, 'update']);
         Route::patch('/delivery-partners/{id}/status', [App\Http\Controllers\Admin\DeliveryPartnerController::class, 'updateStatus']);
+
+        // Dispatch riders
+        Route::get('/dispatch-riders', [App\Http\Controllers\Admin\DispatchRiderController::class, 'index'])->middleware('can:dispatch-rider.view');
+        Route::post('/dispatch-riders', [App\Http\Controllers\Admin\DispatchRiderController::class, 'store'])->middleware('can:dispatch-rider.create');
+        Route::get('/dispatch-riders/{id}', [App\Http\Controllers\Admin\DispatchRiderController::class, 'show'])->middleware('can:dispatch-rider.view');
+        Route::post('/dispatch-riders/{id}', [App\Http\Controllers\Admin\DispatchRiderController::class, 'update'])->middleware('can:dispatch-rider.update');
+        Route::put('/dispatch-riders/{id}', [App\Http\Controllers\Admin\DispatchRiderController::class, 'update'])->middleware('can:dispatch-rider.update');
+        Route::patch('/dispatch-riders/{id}/status', [App\Http\Controllers\Admin\DispatchRiderController::class, 'updateStatus'])->middleware('can:dispatch-rider.update');
 
         // Dispatch time slots
         Route::get('/dispatch-time-slots', [App\Http\Controllers\Admin\DispatchTimeSlotController::class, 'index'])->middleware('can:dispatch-time.view');

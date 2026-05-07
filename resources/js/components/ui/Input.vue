@@ -21,8 +21,10 @@
         :min="min"
         :max="max"
         :step="step"
+        :accept="accept"
         :autocomplete="autocomplete"
         @input="handleInput"
+        @change="handleChange"
         @blur="handleBlur"
         @focus="handleFocus"
         class="w-full px-4 py-2.5 rounded-lg border transition-all duration-300 bg-surface text-primary placeholder-secondary/50 focus:outline-none focus:ring-2"
@@ -78,6 +80,7 @@ const props = defineProps({
   max: [String, Number],
   step: [String, Number],
   autocomplete: String,
+  accept: String,
   size: {
     type: String,
     default: 'md',
@@ -85,7 +88,7 @@ const props = defineProps({
   },
 });
 
-const emit = defineEmits(['update:modelValue', 'blur', 'focus']);
+const emit = defineEmits(['update:modelValue', 'blur', 'focus', 'change']);
 
 const sizeClass = computed(() => {
   const sizes = {
@@ -97,7 +100,11 @@ const sizeClass = computed(() => {
 });
 
 const handleInput = (event) => {
-  emit('update:modelValue', event.target.value);
+  emit('update:modelValue', props.type === 'file' ? event.target.files?.[0] : event.target.value);
+};
+
+const handleChange = (event) => {
+  emit('change', event);
 };
 
 const handleBlur = (event) => {
