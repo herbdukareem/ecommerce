@@ -67,7 +67,6 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.HOSTINGER_SSH_PRIVATE_KEY }}" > ~/.ssh/hostinger_key
           chmod 600 ~/.ssh/hostinger_key
-
           ssh-keyscan -p ${{ secrets.HOSTINGER_SSH_PORT }} ${{ secrets.HOSTINGER_SSH_HOST }} >> ~/.ssh/known_hosts
 
       - name: Test SSH connection to Hostinger
@@ -86,7 +85,7 @@ jobs:
             -o StrictHostKeyChecking=yes \
             -o ConnectTimeout=60 \
             ${{ secrets.HOSTINGER_SSH_USERNAME }}@${{ secrets.HOSTINGER_SSH_HOST }} \
-            "cd ${{ secrets.HOSTINGER_DEPLOY_PATH }} && php artisan down || true"
+            "cd ${{ secrets.HOSTINGER_DEPLOY_PATH }} && ${{ secrets.HOSTINGER_PHP_BIN }} artisan down || true"
 
       - name: Upload files to Hostinger using rsync
         run: |
@@ -107,15 +106,25 @@ jobs:
             -p ${{ secrets.HOSTINGER_SSH_PORT }} \
             -o StrictHostKeyChecking=yes \
             -o ConnectTimeout=60 \
-            ${{ secrets.HOSTINGER_SSH_USERNAME }}@${{ secrets.HOSTINGER_SSH_HOST }} \
-            "cd ${{ secrets.HOSTINGER_DEPLOY_PATH }} && \
-            php artisan migrate --force && \
-            php artisan storage:link || true && \
-            php artisan config:clear && \
-            php artisan cache:clear && \
-            php artisan route:clear && \
-            php artisan view:clear && \
-            php artisan config:cache && \
-            php artisan route:cache && \
-            php artisan view:cache && \
-            php artisan up"
+            ${{ secrets.HOSTINGER_SSH_USERNAME }}@${{ secrets.HOSTINGER_SSH_HOST }} << EOF
+              set -e
+
+              cd ${{ secrets.HOSTINGER_DEPLOY_PATH }}
+
+              echo "Using PHP:"
+              ${{ secrets.HOSTINGER_PHP_BIN }} -v
+
+              ${{ secrets.HOSTINGER_PHP_BIN }} artisan migrate --force
+              ${{ secrets.HOSTINGER_PHP_BIN }} artisan storage:link || true
+
+              ${{ secrets.HOSTINGER_PHP_BIN }} artisan config:clear
+              ${{ secrets.HOSTINGER_PHP_BIN }} artisan cache:clear
+              ${{ secrets.HOSTINGER_PHP_BIN }} artisan route:clear
+              ${{ secrets.HOSTINGER_PHP_BIN }} artisan view:clear
+
+              ${{ secrets.HOSTINGER_PHP_BIN }} artisan config:cache
+              ${{ secrets.HOSTINGER_PHP_BIN }} artisan route:cache
+              ${{ secrets.HOSTINGER_PHP_BIN }} artisan view:cache
+
+              ${{ secrets.HOSTINGER_PHP_BIN }} artisan up
+          EOF
