@@ -39,12 +39,17 @@ class DashboardController extends Controller
             ->where('orders.created_at', '>=', $start)
             ->sum('order_items.total_cost_at_sale');
 
-        $lowStockProducts = DB::table('skus')
+        $skuStockBalances = DB::table('skus')
             ->leftJoin('stocks', 'stocks.sku_id', '=', 'skus.id')
             ->where('skus.active', true)
-            ->groupBy('skus.id')
-            ->havingRaw('COALESCE(SUM(stocks.on_hand - stocks.reserved), 0) <= COALESCE(MAX(skus.low_stock_threshold), 5)')
-            ->get()
+            ->select('skus.id')
+            ->selectRaw('COALESCE(SUM(CASE WHEN stocks.on_hand > stocks.reserved THEN stocks.on_hand - stocks.reserved ELSE 0 END), 0) as available_stock')
+            ->selectRaw('COALESCE(MAX(skus.low_stock_threshold), 5) as low_stock_threshold')
+            ->groupBy('skus.id');
+
+        $lowStockProducts = DB::query()
+            ->fromSub($skuStockBalances, 'sku_stock_balances')
+            ->whereRaw('available_stock <= low_stock_threshold')
             ->count();
 
         $stats = [
@@ -131,23 +136,28 @@ class DashboardController extends Controller
         $period = max(1, (int) $request->integer('period', 30));
         $limit = max(1, (int) $request->integer('limit', 8));
 
+        $soldProducts = DB::table('order_items')
+            ->join('orders', 'orders.id', '=', 'order_items.order_id')
+            ->leftJoin('skus', 'skus.id', '=', 'order_items.sku_id')
+            ->where('orders.payment_status', 'paid')
+            ->where('orders.created_at', '>=', now()->subDays($period))
+            ->selectRaw('COALESCE(order_items.product_id, skus.product_id) as product_id')
+            ->selectRaw('COALESCE(SUM(order_items.quantity), 0) as total_sold')
+            ->selectRaw('COALESCE(SUM(COALESCE(order_items.total_price_at_sale, order_items.quantity * order_items.price_snapshot)), 0) as revenue')
+            ->groupByRaw('COALESCE(order_items.product_id, skus.product_id)');
+
         $topProducts = DB::table('products')
-            ->leftJoin('skus', 'products.id', '=', 'skus.product_id')
-            ->leftJoin('order_items', 'skus.id', '=', 'order_items.sku_id')
-            ->leftJoin('orders', function ($join) use ($period) {
-                $join->on('order_items.order_id', '=', 'orders.id')
-                    ->where('orders.payment_status', '=', 'paid')
-                    ->where('orders.created_at', '>=', now()->subDays($period));
+            ->leftJoinSub($soldProducts, 'sold_products', function ($join) {
+                $join->on('products.id', '=', 'sold_products.product_id');
             })
             ->select(
                 'products.id',
                 DB::raw('COALESCE(products.name, products.title) as name'),
                 DB::raw('COALESCE(products.price, products.base_price, 0) as price'),
                 'products.image',
-                DB::raw('COALESCE(SUM(order_items.quantity), 0) as total_sold'),
-                DB::raw('COALESCE(SUM(order_items.quantity * order_items.price_snapshot), 0) as revenue')
+                DB::raw('COALESCE(sold_products.total_sold, 0) as total_sold'),
+                DB::raw('COALESCE(sold_products.revenue, 0) as revenue')
             )
-            ->groupBy('products.id', 'products.name', 'products.title', 'products.price', 'products.base_price', 'products.image')
             ->orderBy('total_sold', 'desc')
             ->limit($limit)
             ->get()

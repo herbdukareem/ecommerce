@@ -24,7 +24,7 @@ jobs:
       - name: Install Composer dependencies
         run: composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
 
-      - name: Setup Node
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -37,18 +37,30 @@ jobs:
 
       - name: Prepare deployment package
         run: |
-          mkdir deploy
+          rm -rf deploy
+          mkdir -p deploy
+
           rsync -av \
             --exclude=".git" \
             --exclude=".github" \
             --exclude="node_modules" \
             --exclude="tests" \
             --exclude=".env" \
+            --exclude="deploy" \
             --exclude="storage/logs/*" \
             --exclude="storage/framework/cache/*" \
             --exclude="storage/framework/sessions/*" \
             --exclude="storage/framework/views/*" \
             ./ deploy/
+
+      - name: Debug deployment package
+        run: |
+          pwd
+          ls -la
+          echo "Deploy folder content:"
+          ls -la deploy
+          echo "Checking for nested deploy folder:"
+          find deploy -maxdepth 2 -type d | head -50
 
       - name: Upload files to Hostinger via SCP
         uses: appleboy/scp-action@v0.1.7
@@ -57,7 +69,7 @@ jobs:
           username: ${{ secrets.HOSTINGER_SSH_USERNAME }}
           port: ${{ secrets.HOSTINGER_SSH_PORT }}
           key: ${{ secrets.HOSTINGER_SSH_PRIVATE_KEY }}
-          source: "deploy/*"
+          source: "deploy"
           target: ${{ secrets.HOSTINGER_DEPLOY_PATH }}
           strip_components: 1
           overwrite: true
@@ -73,8 +85,6 @@ jobs:
             cd ${{ secrets.HOSTINGER_DEPLOY_PATH }}
 
             php artisan down || true
-
-            composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
 
             php artisan migrate --force
             php artisan storage:link || true
