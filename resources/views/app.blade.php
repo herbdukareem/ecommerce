@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>E-commerce Platform</title>
+    <title>{{ app(\App\Services\BrandSettingsService::class)->settings()['site_name'] ?? config('app.name') }}</title>
     {{--
         Load the compiled CSS and JS from the resources/js directory.  The
         original scaffold placed the SPA inside a backend subfolder; since

@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Services\BrandSettingsService;
 use App\Services\CurrencyFormatter;
+use App\Services\HomepageSettingsService;
 use App\Services\MailConfigurationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -16,7 +18,7 @@ class SettingsController extends Controller
     /**
      * Get all settings
      */
-    public function index(MailConfigurationService $mailConfiguration)
+    public function index(MailConfigurationService $mailConfiguration, BrandSettingsService $brandSettings, HomepageSettingsService $homepageSettings)
     {
         $settings = Cache::remember('site_settings', 3600, function () {
             return DB::table('settings')->pluck('value', 'key');
@@ -28,7 +30,9 @@ class SettingsController extends Controller
             }
 
             return $value;
-        })->merge($mailConfiguration->publicSettings());
+        })->merge($brandSettings->publicSettings())
+            ->merge($homepageSettings->publicSettings())
+            ->merge($mailConfiguration->publicSettings());
 
         return response()->json($settings);
     }
@@ -38,11 +42,43 @@ class SettingsController extends Controller
      */
     public function update(Request $request)
     {
+        $this->normalizeBooleanInputs($request);
+
         $data = $request->validate([
             'site_name' => 'sometimes|string|max:255',
             'site_description' => 'sometimes|nullable|string',
             'site_email' => 'sometimes|nullable|email',
             'site_phone' => 'sometimes|nullable|string',
+            'site_logo' => 'sometimes|nullable|image|mimes:jpg,jpeg,png,webp,svg|max:2048',
+            'site_logo_path' => 'sometimes|nullable|string|max:1000',
+            'theme_primary_color' => ['sometimes', 'string', 'regex:/^#[0-9A-Fa-f]{6}$/'],
+            'theme_secondary_color' => ['sometimes', 'string', 'regex:/^#[0-9A-Fa-f]{6}$/'],
+            'theme_tertiary_color' => ['sometimes', 'string', 'regex:/^#[0-9A-Fa-f]{6}$/'],
+            'homepage_flash_enabled' => 'sometimes|boolean',
+            'homepage_flash_location' => 'sometimes|in:home,global,hidden',
+            'homepage_flash_title' => 'sometimes|nullable|string|max:255',
+            'homepage_flash_message' => 'sometimes|nullable|string|max:1000',
+            'homepage_flash_highlight' => 'sometimes|nullable|string|max:255',
+            'homepage_flash_button_label' => 'sometimes|nullable|string|max:100',
+            'homepage_flash_button_url' => 'sometimes|nullable|string|max:1000',
+            'homepage_flash_background_color' => ['sometimes', 'string', 'regex:/^#[0-9A-Fa-f]{6}$/'],
+            'homepage_flash_text_color' => ['sometimes', 'string', 'regex:/^#[0-9A-Fa-f]{6}$/'],
+            'homepage_flash_image' => 'sometimes|nullable|image|mimes:jpg,jpeg,png,webp,svg|max:4096',
+            'homepage_flash_image_path' => 'sometimes|nullable|string|max:1000',
+            'homepage_flash_countdown_enabled' => 'sometimes|boolean',
+            'homepage_flash_countdown_target' => 'sometimes|nullable|date',
+            'homepage_hero_enabled' => 'sometimes|boolean',
+            'homepage_hero_layout' => 'sometimes|in:image_right,image_left,centered,full_bleed',
+            'homepage_hero_eyebrow' => 'sometimes|nullable|string|max:100',
+            'homepage_hero_headline' => 'sometimes|nullable|string|max:255',
+            'homepage_hero_subheadline' => 'sometimes|nullable|string|max:1000',
+            'homepage_hero_primary_button_label' => 'sometimes|nullable|string|max:100',
+            'homepage_hero_primary_button_url' => 'sometimes|nullable|string|max:1000',
+            'homepage_hero_secondary_button_label' => 'sometimes|nullable|string|max:100',
+            'homepage_hero_secondary_button_url' => 'sometimes|nullable|string|max:1000',
+            'homepage_hero_image' => 'sometimes|nullable|image|mimes:jpg,jpeg,png,webp,svg|max:4096',
+            'homepage_hero_image_path' => 'sometimes|nullable|string|max:1000',
+            'homepage_hero_background_style' => 'sometimes|in:soft,solid,light,full_image',
             'currency' => 'sometimes|string|max:3',
             'currency_symbol' => 'sometimes|string|max:10',
             'currency_locale' => 'sometimes|nullable|string|max:20',
@@ -78,6 +114,21 @@ class SettingsController extends Controller
             'mail_live_from_name' => 'sometimes|nullable|string|max:255',
         ]);
 
+        if ($request->hasFile('site_logo')) {
+            $data['site_logo_path'] = $request->file('site_logo')->store('settings/branding', 'public');
+            unset($data['site_logo']);
+        }
+
+        if ($request->hasFile('homepage_flash_image')) {
+            $data['homepage_flash_image_path'] = $request->file('homepage_flash_image')->store('settings/homepage', 'public');
+            unset($data['homepage_flash_image']);
+        }
+
+        if ($request->hasFile('homepage_hero_image')) {
+            $data['homepage_hero_image_path'] = $request->file('homepage_hero_image')->store('settings/homepage', 'public');
+            unset($data['homepage_hero_image']);
+        }
+
         foreach ($data as $key => $value) {
             if ($this->isSensitiveSettingKey((string) $key) && (is_null($value) || (is_string($value) && trim($value) === ''))) {
                 continue;
@@ -94,11 +145,22 @@ class SettingsController extends Controller
 
         // Clear cache
         Cache::forget('site_settings');
+        Cache::forget('brand_settings');
+        Cache::forget('homepage_settings');
         Cache::forget('currency_settings');
 
         return response()->json([
             'message' => 'Settings updated successfully'
         ]);
+    }
+
+    public function publicSettings(BrandSettingsService $brandSettings, HomepageSettingsService $homepageSettings, CurrencyFormatter $currencyFormatter)
+    {
+        return response()->json(array_merge(
+            $brandSettings->publicSettings(),
+            $homepageSettings->publicSettings(),
+            ['currency' => $currencyFormatter->settings()]
+        ));
     }
 
     public function testMail(Request $request, MailConfigurationService $mailConfiguration)
@@ -114,6 +176,8 @@ class SettingsController extends Controller
                 ['value' => $data['mode'], 'updated_at' => now(), 'created_at' => now()]
             );
             Cache::forget('site_settings');
+            Cache::forget('brand_settings');
+            Cache::forget('homepage_settings');
         }
 
         $mailConfiguration->apply();
@@ -160,6 +224,8 @@ class SettingsController extends Controller
         );
 
         Cache::forget('site_settings');
+        Cache::forget('brand_settings');
+        Cache::forget('homepage_settings');
         Cache::forget('currency_settings');
 
         return response()->json([
@@ -204,6 +270,8 @@ class SettingsController extends Controller
         );
 
         Cache::forget('site_settings');
+        Cache::forget('brand_settings');
+        Cache::forget('homepage_settings');
 
         return response()->json([
             'message' => 'Payment gateway updated successfully'
@@ -217,6 +285,33 @@ class SettingsController extends Controller
             || str_contains($needle, 'token')
             || str_contains($needle, 'password')
             || str_contains($needle, 'private');
+    }
+
+    protected function normalizeBooleanInputs(Request $request): void
+    {
+        $normalized = [];
+
+        foreach ($this->booleanSettingKeys() as $key) {
+            if ($request->has($key)) {
+                $normalized[$key] = filter_var($request->input($key), FILTER_VALIDATE_BOOLEAN);
+            }
+        }
+
+        if ($normalized !== []) {
+            $request->merge($normalized);
+        }
+    }
+
+    protected function booleanSettingKeys(): array
+    {
+        return [
+            'enable_reviews',
+            'enable_wishlist',
+            'enable_coupons',
+            'homepage_flash_enabled',
+            'homepage_flash_countdown_enabled',
+            'homepage_hero_enabled',
+        ];
     }
 }
 

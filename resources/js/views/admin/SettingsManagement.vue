@@ -14,7 +14,7 @@
             :key="tab.id"
             type="button"
             @click="activeTab = tab.id"
-            :class="activeTab === tab.id ? 'border-orange-600 text-orange-600' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'"
+            :class="activeTab === tab.id ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'"
             class="border-b-2 px-1 py-4 text-sm font-medium transition-colors"
           >
             <i :class="tab.icon" class="mr-2"></i>
@@ -29,6 +29,21 @@
           <Field label="Site Name">
             <input v-model="settings.site_name" type="text" class="form-input" />
           </Field>
+          <Field label="Logo">
+            <div class="flex items-center gap-4">
+              <img
+                v-if="logoPreview"
+                :src="logoPreview"
+                :alt="`${settings.site_name || 'Store'} logo preview`"
+                class="h-16 w-16 rounded-lg border border-gray-200 object-contain bg-white"
+              />
+              <div v-else class="flex h-16 w-16 items-center justify-center rounded-lg border border-dashed border-gray-300 text-xs text-gray-500">
+                No logo
+              </div>
+              <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" class="form-input" @change="handleLogoChange" />
+            </div>
+            <p class="mt-2 text-xs text-gray-500">PNG, JPG, WEBP, or SVG up to 2MB.</p>
+          </Field>
           <Field label="Contact Email">
             <input v-model="settings.site_email" type="email" class="form-input" />
           </Field>
@@ -42,6 +57,126 @@
             <textarea v-model="settings.site_description" rows="3" class="form-input"></textarea>
           </Field>
         </div>
+        <SaveBar :saving="saving" />
+      </form>
+
+      <form v-if="activeTab === 'theme'" class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm" @submit.prevent="saveSettings">
+        <SectionHeader title="Theme Colors" description="These colors power buttons, links, highlights, and brand accents across admin and storefront pages." />
+        <div class="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <Field label="Primary Color">
+            <ColorInput v-model="settings.theme_primary_color" />
+          </Field>
+          <Field label="Secondary Color">
+            <ColorInput v-model="settings.theme_secondary_color" />
+          </Field>
+          <Field label="Tertiary Color">
+            <ColorInput v-model="settings.theme_tertiary_color" />
+          </Field>
+        </div>
+        <div class="mt-6 rounded-xl border border-gray-200 p-5">
+          <p class="text-sm font-semibold text-gray-900">Brand preview</p>
+          <div class="mt-4 flex flex-wrap items-center gap-3">
+            <span class="rounded-lg px-4 py-2 text-sm font-semibold text-white" :style="{ backgroundColor: settings.theme_primary_color }">Primary action</span>
+            <span class="rounded-lg px-4 py-2 text-sm font-semibold text-white" :style="{ backgroundColor: settings.theme_secondary_color }">Secondary signal</span>
+            <span class="rounded-lg px-4 py-2 text-sm font-semibold text-white" :style="{ backgroundColor: settings.theme_tertiary_color }">Tertiary accent</span>
+          </div>
+        </div>
+        <SaveBar :saving="saving" />
+      </form>
+
+      <form v-if="activeTab === 'homepage'" class="space-y-6" @submit.prevent="saveSettings">
+        <section class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+          <SectionHeader title="Top Flash Banner" description="Control the homepage announcement or site-wide promotion without editing code." />
+          <div class="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <ToggleRow v-model="settings.homepage_flash_enabled" title="Show Flash Banner" description="Turn the announcement area on or off." class="lg:col-span-2 rounded-lg border border-gray-100 px-4" />
+            <Field label="Display Location">
+              <select v-model="settings.homepage_flash_location" class="form-input">
+                <option value="home">Home page only</option>
+                <option value="global">Top of every page</option>
+                <option value="hidden">Hidden</option>
+              </select>
+            </Field>
+            <Field label="Title">
+              <input v-model="settings.homepage_flash_title" type="text" class="form-input" />
+            </Field>
+            <Field label="Message" class="lg:col-span-2">
+              <textarea v-model="settings.homepage_flash_message" rows="3" class="form-input"></textarea>
+            </Field>
+            <Field label="Highlight Text">
+              <input v-model="settings.homepage_flash_highlight" type="text" class="form-input" />
+            </Field>
+            <Field label="Button Label">
+              <input v-model="settings.homepage_flash_button_label" type="text" class="form-input" />
+            </Field>
+            <Field label="Button Link">
+              <input v-model="settings.homepage_flash_button_url" type="text" class="form-input" placeholder="/products" />
+            </Field>
+            <Field label="Countdown Target">
+              <input v-model="settings.homepage_flash_countdown_target" type="datetime-local" class="form-input" />
+              <label class="mt-2 flex items-center gap-2 text-sm text-gray-600">
+                <input v-model="settings.homepage_flash_countdown_enabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary/40" />
+                Show countdown
+              </label>
+            </Field>
+            <Field label="Background Color">
+              <ColorInput v-model="settings.homepage_flash_background_color" />
+            </Field>
+            <Field label="Text Color">
+              <ColorInput v-model="settings.homepage_flash_text_color" />
+            </Field>
+            <Field label="Optional Flash Image" class="lg:col-span-2">
+              <ImageUpload :preview="flashImagePreview" label="Flash banner image" @change="handleFlashImageChange" />
+            </Field>
+          </div>
+        </section>
+
+        <section class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+          <SectionHeader title="Hero Section" description="Edit the main homepage headline, image, layout, and call-to-action buttons." />
+          <div class="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <ToggleRow v-model="settings.homepage_hero_enabled" title="Show Hero Section" description="Turn the homepage hero on or off." class="lg:col-span-2 rounded-lg border border-gray-100 px-4" />
+            <Field label="Layout Style">
+              <select v-model="settings.homepage_hero_layout" class="form-input">
+                <option value="image_right">Image right</option>
+                <option value="image_left">Image left</option>
+                <option value="centered">Centered text</option>
+                <option value="full_bleed">Full image background</option>
+              </select>
+            </Field>
+            <Field label="Background Style">
+              <select v-model="settings.homepage_hero_background_style" class="form-input">
+                <option value="soft">Soft brand tint</option>
+                <option value="solid">Solid brand color</option>
+                <option value="light">Light clean background</option>
+                <option value="full_image">Use image as background</option>
+              </select>
+            </Field>
+            <Field label="Eyebrow">
+              <input v-model="settings.homepage_hero_eyebrow" type="text" class="form-input" />
+            </Field>
+            <Field label="Headline">
+              <input v-model="settings.homepage_hero_headline" type="text" class="form-input" />
+            </Field>
+            <Field label="Subheadline" class="lg:col-span-2">
+              <textarea v-model="settings.homepage_hero_subheadline" rows="3" class="form-input"></textarea>
+            </Field>
+            <Field label="Primary Button Label">
+              <input v-model="settings.homepage_hero_primary_button_label" type="text" class="form-input" />
+            </Field>
+            <Field label="Primary Button Link">
+              <input v-model="settings.homepage_hero_primary_button_url" type="text" class="form-input" placeholder="/products" />
+            </Field>
+            <Field label="Secondary Button Label">
+              <input v-model="settings.homepage_hero_secondary_button_label" type="text" class="form-input" />
+            </Field>
+            <Field label="Secondary Button Link">
+              <input v-model="settings.homepage_hero_secondary_button_url" type="text" class="form-input" placeholder="/products?sale=true" />
+            </Field>
+            <Field label="Hero Image" class="lg:col-span-2">
+              <ImageUpload :preview="heroImagePreview" label="Hero image" @change="handleHeroImageChange" />
+            </Field>
+          </div>
+        </section>
+
         <SaveBar :saving="saving" />
       </form>
 
@@ -140,9 +275,10 @@
 </template>
 
 <script setup>
-import { h, onMounted, ref } from 'vue';
+import { computed, h, onMounted, ref } from 'vue';
 import axios from 'axios';
 import AdminLayout from '../../components/admin/AdminLayout.vue';
+import { useSettingsStore } from '../../stores/settings';
 
 const activeTab = ref('general');
 const saving = ref(false);
@@ -150,9 +286,18 @@ const testingMail = ref(false);
 const testEmail = ref('');
 const testMailMessage = ref('');
 const testMailError = ref('');
+const logoFile = ref(null);
+const flashImageFile = ref(null);
+const heroImageFile = ref(null);
+const logoPreviewOverride = ref('');
+const flashImagePreviewOverride = ref('');
+const heroImagePreviewOverride = ref('');
+const settingsStore = useSettingsStore();
 
 const tabs = [
   { id: 'general', label: 'General', icon: 'mdi mdi-cog' },
+  { id: 'theme', label: 'Theme', icon: 'mdi mdi-palette-outline' },
+  { id: 'homepage', label: 'Homepage Content', icon: 'mdi mdi-home-edit-outline' },
   { id: 'currency', label: 'Currency', icon: 'mdi mdi-currency-usd' },
   { id: 'mail', label: 'Mail', icon: 'mdi mdi-email-outline' },
   { id: 'features', label: 'Features', icon: 'mdi mdi-toggle-switch' },
@@ -163,6 +308,36 @@ const settings = ref({
   site_description: '',
   site_email: '',
   site_phone: '',
+  site_logo_path: '',
+  site_logo_url: '',
+  theme_primary_color: '#063f7c',
+  theme_secondary_color: '#43b02a',
+  theme_tertiary_color: '#f59e0b',
+  homepage_flash_enabled: true,
+  homepage_flash_location: 'home',
+  homepage_flash_title: 'Launching Soon',
+  homepage_flash_message: 'Fresh deals, fast delivery, and everyday essentials are ready for you.',
+  homepage_flash_highlight: 'Up to 60% off',
+  homepage_flash_button_label: 'Shop Deals',
+  homepage_flash_button_url: '/products',
+  homepage_flash_background_color: '#063f7c',
+  homepage_flash_text_color: '#ffffff',
+  homepage_flash_image_path: '',
+  homepage_flash_image_url: '',
+  homepage_flash_countdown_enabled: false,
+  homepage_flash_countdown_target: '',
+  homepage_hero_enabled: true,
+  homepage_hero_layout: 'image_right',
+  homepage_hero_eyebrow: 'Online Mart',
+  homepage_hero_headline: 'Discover quality products for every need',
+  homepage_hero_subheadline: 'Shop trusted items with clear prices, easy checkout, and reliable delivery updates.',
+  homepage_hero_primary_button_label: 'Shop Now',
+  homepage_hero_primary_button_url: '/products',
+  homepage_hero_secondary_button_label: 'View Deals',
+  homepage_hero_secondary_button_url: '/products?sale=true',
+  homepage_hero_image_path: '',
+  homepage_hero_image_url: '',
+  homepage_hero_background_style: 'soft',
   currency: 'NGN',
   currency_symbol: 'NGN ',
   currency_locale: 'en-NG',
@@ -192,6 +367,11 @@ const settings = ref({
   mail_live_password_configured: false,
 });
 
+const logoPreview = computed(() => logoPreviewOverride.value || settings.value.site_logo_url || settings.value.site_logo_path || '');
+const flashImagePreview = computed(() => flashImagePreviewOverride.value || settings.value.homepage_flash_image_url || settings.value.homepage_flash_image_path || '');
+const heroImagePreview = computed(() => heroImagePreviewOverride.value || settings.value.homepage_hero_image_url || settings.value.homepage_hero_image_path || '');
+const hasUpload = computed(() => Boolean(logoFile.value || flashImageFile.value || heroImageFile.value));
+
 const SectionHeader = {
   props: { title: String, description: String },
   setup(props) {
@@ -219,8 +399,57 @@ const SaveBar = {
       h('button', {
         type: 'submit',
         disabled: props.saving,
-        class: 'rounded-lg bg-orange-600 px-6 py-2 text-sm font-medium text-white transition-colors hover:bg-orange-700 disabled:opacity-50',
+        class: 'rounded-lg bg-primary px-6 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-dark disabled:opacity-50',
       }, props.saving ? 'Saving...' : 'Save Changes'),
+    ]);
+  },
+};
+
+const ColorInput = {
+  props: { modelValue: String },
+  emits: ['update:modelValue'],
+  setup(props, { emit }) {
+    const update = (value) => emit('update:modelValue', value);
+
+    return () => h('div', { class: 'flex gap-2' }, [
+      h('input', {
+        type: 'color',
+        value: props.modelValue,
+        class: 'h-11 w-14 rounded-lg border border-gray-300 bg-white p-1',
+        onInput: (event) => update(event.target.value),
+      }),
+      h('input', {
+        type: 'text',
+        value: props.modelValue,
+        class: 'form-input uppercase',
+        placeholder: '#063F7C',
+        onInput: (event) => update(event.target.value),
+      }),
+    ]);
+  },
+};
+
+const ImageUpload = {
+  props: { preview: String, label: String },
+  emits: ['change'],
+  setup(props, { emit }) {
+    return () => h('div', { class: 'flex flex-col gap-3 sm:flex-row sm:items-center' }, [
+      props.preview
+        ? h('img', {
+            src: props.preview,
+            alt: `${props.label} preview`,
+            class: 'h-24 w-32 rounded-lg border border-gray-200 object-cover bg-white',
+          })
+        : h('div', { class: 'flex h-24 w-32 items-center justify-center rounded-lg border border-dashed border-gray-300 text-xs text-gray-500' }, 'No image'),
+      h('div', { class: 'flex-1' }, [
+        h('input', {
+          type: 'file',
+          accept: 'image/png,image/jpeg,image/webp,image/svg+xml',
+          class: 'form-input',
+          onChange: (event) => emit('change', event),
+        }),
+        h('p', { class: 'mt-2 text-xs text-gray-500' }, 'PNG, JPG, WEBP, or SVG up to 4MB.'),
+      ]),
     ]);
   },
 };
@@ -237,7 +466,7 @@ const ToggleRow = {
       h('input', {
         type: 'checkbox',
         checked: props.modelValue,
-        class: 'h-5 w-5 rounded border-gray-300 text-orange-600 focus:ring-orange-500',
+        class: 'h-5 w-5 rounded border-gray-300 text-primary focus:ring-primary/40',
         onChange: (event) => emit('update:modelValue', event.target.checked),
       }),
     ]);
@@ -332,6 +561,9 @@ const fetchSettings = async () => {
         settings.value[key] = parseSettingValue(value);
       }
     });
+    logoPreviewOverride.value = '';
+    flashImagePreviewOverride.value = '';
+    heroImagePreviewOverride.value = '';
   } catch (error) {
     console.error('Failed to fetch settings:', error);
   }
@@ -340,10 +572,14 @@ const fetchSettings = async () => {
 const saveSettings = async () => {
   saving.value = true;
   try {
-    await axios.put('/api/admin/settings', settingsPayload());
+    await axios[hasUpload.value ? 'post' : 'put']('/api/admin/settings', settingsPayload());
+    logoFile.value = null;
+    flashImageFile.value = null;
+    heroImageFile.value = null;
     settings.value.mail_sandbox_password = '';
     settings.value.mail_live_password = '';
     await fetchSettings();
+    await settingsStore.initSettings();
     alert('Settings saved successfully.');
   } catch (error) {
     console.error('Failed to save settings:', error);
@@ -357,6 +593,9 @@ const settingsPayload = () => {
   const payload = { ...settings.value };
 
   delete payload.active_mail_mode;
+  delete payload.site_logo_url;
+  delete payload.homepage_flash_image_url;
+  delete payload.homepage_hero_image_url;
   delete payload.mail_sandbox_password_configured;
   delete payload.mail_live_password_configured;
 
@@ -368,7 +607,46 @@ const settingsPayload = () => {
     delete payload.mail_live_password;
   }
 
-  return payload;
+  if (!hasUpload.value) {
+    return payload;
+  }
+
+  const formData = new FormData();
+  Object.entries(payload).forEach(([key, value]) => {
+    if (value !== undefined && value !== null) {
+      formData.append(key, value);
+    }
+  });
+  if (logoFile.value) {
+    formData.append('site_logo', logoFile.value);
+  }
+  if (flashImageFile.value) {
+    formData.append('homepage_flash_image', flashImageFile.value);
+  }
+  if (heroImageFile.value) {
+    formData.append('homepage_hero_image', heroImageFile.value);
+  }
+  formData.append('_method', 'PUT');
+
+  return formData;
+};
+
+const handleLogoChange = (event) => {
+  const file = event.target.files?.[0] || null;
+  logoFile.value = file;
+  logoPreviewOverride.value = file ? URL.createObjectURL(file) : '';
+};
+
+const handleFlashImageChange = (event) => {
+  const file = event.target.files?.[0] || null;
+  flashImageFile.value = file;
+  flashImagePreviewOverride.value = file ? URL.createObjectURL(file) : '';
+};
+
+const handleHeroImageChange = (event) => {
+  const file = event.target.files?.[0] || null;
+  heroImageFile.value = file;
+  heroImagePreviewOverride.value = file ? URL.createObjectURL(file) : '';
 };
 
 const sendTestMail = async () => {
@@ -401,7 +679,7 @@ onMounted(fetchSettings);
 }
 
 .form-input:focus {
-  border-color: #f97316;
-  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.18);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 18%, transparent);
 }
 </style>

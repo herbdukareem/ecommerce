@@ -8,12 +8,18 @@
       <!-- Logo -->
       <div class="h-16 flex items-center justify-between px-6 border-b border-DEFAULT">
         <div class="flex items-center gap-3">
-          <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-primary-dark flex items-center justify-center">
+          <img
+            v-if="siteLogoUrl"
+            :src="siteLogoUrl"
+            :alt="`${siteName} logo`"
+            class="h-11 w-11 rounded-lg object-contain bg-white"
+          />
+          <div v-else class="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-primary-dark flex items-center justify-center">
             <i class="mdi mdi-store text-white text-xl"></i>
           </div>
           <div>
-            <h1 class="text-lg font-bold text-primary">Admin Panel</h1>
-            <p class="text-xs text-secondary">E-commerce</p>
+            <h1 class="text-lg font-bold text-primary">{{ siteName }}</h1>
+            <p class="text-xs text-secondary">Admin Panel</p>
           </div>
         </div>
       </div>
@@ -85,9 +91,6 @@
         </div>
 
         <div class="flex items-center gap-3">
-          <!-- Theme Selector -->
-          <ThemeSelector />
-
           <!-- Notifications -->
           <button class="relative p-2 rounded-lg hover:bg-base transition-colors">
             <i class="mdi mdi-bell text-xl text-primary"></i>
@@ -121,15 +124,18 @@
 import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import Badge from '../ui/Badge.vue';
-import ThemeSelector from '../ui/ThemeSelector.vue';
 import { useAuthStore } from '../../stores/auth';
 import { useCartStore } from '../../stores/cart';
+import { useSettingsStore } from '../../stores/settings';
 
 const router = useRouter();
 const sidebarOpen = ref(false);
 const authStore = useAuthStore();
 const cartStore = useCartStore();
+const settingsStore = useSettingsStore();
 
+const siteName = computed(() => settingsStore.siteName || 'Online Mart');
+const siteLogoUrl = computed(() => settingsStore.siteLogoUrl || '');
 const displayName = computed(() => authStore.user?.name || 'Admin User');
 const displayEmail = computed(() => authStore.user?.email || 'admin@example.com');
 const userInitial = computed(() => (displayName.value || 'A').trim().charAt(0) || 'A');

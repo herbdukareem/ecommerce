@@ -11,6 +11,7 @@ use App\Models\Order;
 use App\Models\Address;
 use App\Models\Review;
 use App\Services\MailConfigurationService;
+use App\Services\BrandSettingsService;
 use App\Policies\ProductPolicy;
 use App\Policies\OrderPolicy;
 use App\Policies\AddressPolicy;
@@ -43,6 +44,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        app(BrandSettingsService::class)->apply();
         app(MailConfigurationService::class)->apply();
 
         // Register policies

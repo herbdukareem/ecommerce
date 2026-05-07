@@ -1,70 +1,54 @@
 <template>
-  <section class="relative overflow-hidden bg-gradient-to-r from-orange-900 via-orange-800 to-orange-900">
-    <!-- Animated confetti background -->
-    <div class="absolute inset-0 overflow-hidden">
-      <div class="confetti-container">
-        <div v-for="i in 50" :key="i" class="confetti" :style="confettiStyle(i)"></div>
-      </div>
+  <section
+    v-if="visible"
+    class="relative overflow-hidden"
+    :style="{ backgroundColor: flash.backgroundColor, color: flash.textColor }"
+  >
+    <div class="absolute inset-0 pointer-events-none opacity-20">
+      <div class="absolute -left-12 top-8 h-40 w-40 rounded-full bg-white blur-3xl"></div>
+      <div class="absolute bottom-0 right-8 h-52 w-52 rounded-full bg-accent blur-3xl"></div>
     </div>
 
     <div class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
-        <!-- Left side - Logo and Text -->
+      <div class="grid grid-cols-1 lg:grid-cols-[1fr_0.72fr] gap-8 items-center">
         <div class="text-center lg:text-left">
-          <div class="flex items-center justify-center lg:justify-start gap-3 mb-6">
-            <div class="w-16 h-16 bg-white rounded-lg flex items-center justify-center shadow-lg">
-              <div class="w-12 h-12 bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg flex items-center justify-center">
-                <i class="mdi mdi-shopping text-white text-2xl"></i>
-                 
-              </div>
-            </div>
-            <h1 class="text-4xl font-bold text-white">Ashlab</h1>
-          </div>
-
-          <h2 class="text-5xl md:text-6xl font-bold text-orange-300 mb-8 italic" style="font-family: 'Brush Script MT', cursive;">
-            Launching Soon
+          <p v-if="flash.title" class="text-sm font-semibold uppercase tracking-[0.22em] opacity-75">
+            {{ flash.title }}
+          </p>
+          <h2 v-if="flash.highlight" class="mt-3 text-4xl md:text-5xl font-black leading-tight">
+            {{ flash.highlight }}
           </h2>
+          <p v-if="flash.message" class="mt-4 max-w-2xl text-base md:text-lg leading-8 opacity-85 mx-auto lg:mx-0">
+            {{ flash.message }}
+          </p>
 
-          <div class="mb-8">
-            <p class="text-2xl md:text-2xl font-bold text-yellow-300 mb-2">UP TO</p>
-            <p class="text-6xl md:text-5xl font-black text-yellow-300 drop-shadow-lg">60% OFF</p>
-          </div>
-
-          <!-- Countdown Timer -->
-          <div class="flex justify-center lg:justify-start gap-4 mb-8">
-            <div class="bg-orange-950/50 backdrop-blur-sm border-2 border-orange-500 rounded-lg px-3 py-2 min-w-[80px]">
-              <div class="text-3xl font-bold text-white">{{ countdown.days }}</div>
-              <div class="text-xs text-orange-300 uppercase">Days</div>
-            </div>
-            <div class="text-3xl text-white self-center">:</div>
-            <div class="bg-orange-950/50 backdrop-blur-sm border-2 border-orange-500 rounded-lg px-3 py-2 min-w-[80px]">
-              <div class="text-3xl font-bold text-white">{{ countdown.hours }}</div>
-              <div class="text-xs text-orange-300 uppercase">Hours</div>
-            </div>
-            <div class="text-3xl text-white self-center">:</div>
-            <div class="bg-orange-950/50 backdrop-blur-sm border-2 border-orange-500 rounded-lg px-3 py-2 min-w-[80px]">
-              <div class="text-3xl font-bold text-white">{{ countdown.minutes }}</div>
-              <div class="text-xs text-orange-300 uppercase">Mins</div>
-            </div>
-            <div class="text-3xl text-white self-center">:</div>
-            <div class="bg-orange-950/50 backdrop-blur-sm border-2 border-orange-500 rounded-lg px-4 py-3 min-w-[80px]">
-              <div class="text-3xl font-bold text-white">{{ countdown.seconds }}</div>
-              <div class="text-xs text-orange-300 uppercase">Secs</div>
+          <div v-if="showCountdown" class="mt-7 flex justify-center lg:justify-start gap-3">
+            <div v-for="item in countdownItems" :key="item.label" class="min-w-[72px] rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-center backdrop-blur">
+              <div class="text-2xl font-bold">{{ item.value }}</div>
+              <div class="text-[11px] uppercase tracking-wide opacity-75">{{ item.label }}</div>
             </div>
           </div>
 
-          <button class="bg-yellow-400 hover:bg-yellow-500 text-orange-900 font-bold px-8 py-3 rounded-lg text-lg transition-all transform hover:scale-105 shadow-lg">
-            Learn More
+          <button
+            v-if="flash.buttonLabel && flash.buttonUrl"
+            type="button"
+            class="mt-7 inline-flex items-center gap-2 rounded-lg bg-white px-5 py-3 text-sm font-bold text-primary shadow-sm transition hover:-translate-y-0.5"
+            @click="goTo(flash.buttonUrl)"
+          >
+            {{ flash.buttonLabel }}
+            <i class="mdi mdi-arrow-right"></i>
           </button>
         </div>
 
-        <!-- Right side - Illustration -->
-        <div class="relative hidden lg:block">
-          <div class="relative z-10">
-            <!-- Gift boxes -->
-             <img :src="launchingSoon" alt="Logo" class="w-full h-full object-contain">
-           
-           
+        <div class="hidden lg:flex justify-end">
+          <img
+            v-if="flash.imageUrl"
+            :src="flash.imageUrl"
+            :alt="flash.title || 'Homepage promotion'"
+            class="max-h-72 w-full max-w-md object-contain"
+          />
+          <div v-else class="flex h-64 w-full max-w-sm items-center justify-center rounded-2xl border border-white/20 bg-white/10">
+            <i class="mdi mdi-sale-outline text-8xl opacity-60"></i>
           </div>
         </div>
       </div>
@@ -73,70 +57,47 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue';
-import launchingSoon from '@/assets/images/cart-bag.png';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { useRouter } from 'vue-router';
+import { useSettingsStore } from '../../stores/settings';
 
-const countdown = ref({
-  days: 0,
-  hours: 0,
-  minutes: 0,
-  seconds: 0,
-});
-
+const router = useRouter();
+const settingsStore = useSettingsStore();
+const now = ref(Date.now());
 let intervalId = null;
 
-// Set launch date (you can change this)
-const launchDate = new Date('2026-03-01T00:00:00').getTime();
+const flash = computed(() => settingsStore.homepageFlash);
+const visible = computed(() => flash.value.enabled && flash.value.location === 'home');
+const targetTime = computed(() => flash.value.countdownTarget ? new Date(flash.value.countdownTarget).getTime() : null);
+const remaining = computed(() => targetTime.value ? Math.max(0, targetTime.value - now.value) : 0);
+const showCountdown = computed(() => flash.value.countdownEnabled && targetTime.value && remaining.value > 0);
 
-const updateCountdown = () => {
-  const now = new Date().getTime();
-  const distance = launchDate - now;
+const countdownItems = computed(() => {
+  const distance = remaining.value;
+  return [
+    { label: 'Days', value: Math.floor(distance / (1000 * 60 * 60 * 24)) },
+    { label: 'Hours', value: Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)) },
+    { label: 'Mins', value: Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60)) },
+    { label: 'Secs', value: Math.floor((distance % (1000 * 60)) / 1000) },
+  ];
+});
 
-  if (distance > 0) {
-    countdown.value = {
-      days: Math.floor(distance / (1000 * 60 * 60 * 24)),
-      hours: Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
-      minutes: Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60)),
-      seconds: Math.floor((distance % (1000 * 60)) / 1000),
-    };
-  } else {
-    countdown.value = { days: 0, hours: 0, minutes: 0, seconds: 0 };
+const goTo = (url) => {
+  if (!url) return;
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    window.location.href = url;
+    return;
   }
-};
-
-const confettiStyle = (index) => {
-  const colors = ['#FCD34D', '#FBBF24', '#F59E0B', '#F97316', '#EA580C'];
-  return {
-    left: `${Math.random() * 100}%`,
-    animationDelay: `${Math.random() * 5}s`,
-    backgroundColor: colors[index % colors.length],
-  };
+  router.push(url);
 };
 
 onMounted(() => {
-  updateCountdown();
-  intervalId = setInterval(updateCountdown, 1000);
+  intervalId = setInterval(() => {
+    now.value = Date.now();
+  }, 1000);
 });
 
 onUnmounted(() => {
-  if (intervalId) {
-    clearInterval(intervalId);
-  }
+  if (intervalId) clearInterval(intervalId);
 });
 </script>
-
-<style scoped>
-.confetti {
-  position: absolute;
-  width: 10px;
-  height: 10px;
-  top: -10px;
-  animation: fall 5s linear infinite;
-}
-
-@keyframes fall {
-  to {
-    transform: translateY(100vh) rotate(360deg);
-  }
-}
-</style>

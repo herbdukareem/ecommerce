@@ -35,6 +35,7 @@ Route::get('/locations/autocomplete', [App\Http\Controllers\LocationController::
 Route::get('/checkout/cities', [App\Http\Controllers\CheckoutController::class, 'operationalCities']);
 Route::get('/checkout/areas', [App\Http\Controllers\CheckoutController::class, 'operationalAreas']);
 Route::get('/checkout/dispatch-time-slots', [App\Http\Controllers\CheckoutController::class, 'dispatchTimeSlots']);
+Route::get('/settings/public', [App\Http\Controllers\Admin\SettingsController::class, 'publicSettings']);
 Route::get('/settings/currency', [App\Http\Controllers\Admin\SettingsController::class, 'getCurrency']);
 
 // Public catalog routes (no auth required)
@@ -178,6 +179,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
         // Settings Management
         Route::get('/settings', [App\Http\Controllers\Admin\SettingsController::class, 'index']);
+        Route::post('/settings', [App\Http\Controllers\Admin\SettingsController::class, 'update']);
         Route::put('/settings', [App\Http\Controllers\Admin\SettingsController::class, 'update']);
         Route::post('/settings/mail/test', [App\Http\Controllers\Admin\SettingsController::class, 'testMail']);
         Route::get('/settings/currency', [App\Http\Controllers\Admin\SettingsController::class, 'getCurrency']);

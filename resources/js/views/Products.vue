@@ -159,7 +159,7 @@
 </template>
 
 <script setup>
-import { computed, inject, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import { computed, inject, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import MainLayout from '../components/layout/MainLayout.vue';
 import Card from '../components/ui/Card.vue';
@@ -197,6 +197,13 @@ const localFilters = reactive({
   price_max: '',
   sort: 'newest',
   in_stock: false,
+});
+
+const routeCategoryId = computed(() => {
+  const raw = route.query.category_id;
+  const value = Array.isArray(raw) ? raw[0] : raw;
+
+  return value ? Number(value) || null : null;
 });
 
 const sortOptions = [
@@ -303,6 +310,10 @@ const syncFiltersToStore = () => {
   catalogStore.filters.in_stock = !!localFilters.in_stock;
 };
 
+const syncFiltersFromRoute = () => {
+  localFilters.category_id = routeCategoryId.value;
+};
+
 const applyFilters = async () => {
   errorMessage.value = '';
   catalogStore.filters.page = 1;
@@ -398,11 +409,19 @@ const onImageError = (event, fallback) => {
 };
 
 onMounted(async () => {
-  if (route.query.category_id) {
-    localFilters.category_id = Number(route.query.category_id) || null;
-  }
+  syncFiltersFromRoute();
   document.addEventListener('click', handleDocumentClick);
   await Promise.all([catalogStore.fetchCategories(), catalogStore.fetchAttributes()]);
+  await applyFilters();
+});
+
+watch(routeCategoryId, async (categoryId, previousCategoryId) => {
+  if (categoryId === previousCategoryId) {
+    return;
+  }
+
+  syncFiltersFromRoute();
+  closeOptionMenu();
   await applyFilters();
 });
 

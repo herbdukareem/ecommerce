@@ -5,13 +5,19 @@
         <!-- About -->
         <div>
           <div class="flex items-center gap-2 mb-4">
-            <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-primary-dark flex items-center justify-center shadow-material-2">
+            <img
+              v-if="siteLogoUrl"
+              :src="siteLogoUrl"
+              :alt="`${siteName} logo`"
+              class="h-12 w-12 rounded-lg object-contain bg-white"
+            />
+            <div v-else class="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-primary-dark flex items-center justify-center shadow-material-2">
               <i class="mdi mdi-shopping text-white text-xl"></i>
             </div>
-            <span class="text-xl font-bold text-primary">ShopHub</span>
+            <span class="text-xl font-bold text-primary">{{ siteName }}</span>
           </div>
           <p class="text-sm text-secondary mb-4">
-            Your one-stop shop for all your needs. Quality products, great prices, and excellent service.
+            {{ siteDescription }}
           </p>
           <div class="flex gap-3">
             <a href="#" class="w-9 h-9 rounded-lg bg-base hover:bg-primary hover:text-white text-primary flex items-center justify-center transition-all">
@@ -116,7 +122,7 @@
       <!-- Bottom Bar -->
       <div class="mt-12 pt-8 border-t border-DEFAULT flex flex-col sm:flex-row items-center justify-between gap-4">
         <p class="text-sm text-secondary">
-          © {{ currentYear }} ShopHub. All rights reserved.
+          &copy; {{ currentYear }} {{ siteName }}. All rights reserved.
         </p>
         <div class="flex items-center gap-6">
           <router-link to="/terms" class="text-sm text-secondary hover:text-primary transition-colors">
@@ -133,9 +139,14 @@
 
 <script setup>
 import { ref, computed } from 'vue';
+import { useSettingsStore } from '../../stores/settings';
 
 const email = ref('');
+const settingsStore = useSettingsStore();
 const currentYear = computed(() => new Date().getFullYear());
+const siteName = computed(() => settingsStore.siteName || 'Online Mart');
+const siteDescription = computed(() => settingsStore.siteDescription || 'Your one-stop shop for quality products, fast delivery, and everyday value.');
+const siteLogoUrl = computed(() => settingsStore.siteLogoUrl || '');
 
 const subscribe = () => {
   // Implement newsletter subscription

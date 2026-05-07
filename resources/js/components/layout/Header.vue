@@ -9,8 +9,14 @@
         <div class="flex items-center justify-between h-16">
         <!-- Logo -->
         <router-link to="/" class="flex items-center">
-          <div class="text-2xl font-bold">
-            <span class="text-orange-500">ShopHub</span>
+          <img
+            v-if="siteLogoUrl"
+            :src="siteLogoUrl"
+            :alt="`${siteName} logo`"
+            class="h-12 w-auto max-w-[160px] object-contain"
+          />
+          <div v-else class="text-2xl font-bold text-primary">
+            {{ siteName }}
           </div>
         </router-link>
 
@@ -20,9 +26,9 @@
             <input
               type="search"
               placeholder="Search products, brands and categories"
-              class="flex-1 px-4 py-2.5 border border-gray-300 rounded-l-md text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:border-orange-500"
+              class="flex-1 px-4 py-2.5 border border-gray-300 rounded-l-md text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:border-primary"
             />
-            <button class="px-6 bg-orange-500 text-white rounded-r-md hover:bg-orange-600 transition-colors">
+            <button class="px-6 bg-primary text-white rounded-r-md hover:bg-primary-dark transition-colors">
               <i class="mdi mdi-magnify text-xl"></i>
             </button>
           </div>
@@ -31,7 +37,7 @@
         <!-- Navigation -->
         <nav class="flex items-center gap-4">
           <!-- Help -->
-          <button class="hidden lg:flex items-center gap-1 text-sm text-gray-700 hover:text-orange-500 transition-colors">
+          <button class="hidden lg:flex items-center gap-1 text-sm text-gray-700 hover:text-primary transition-colors">
             <i class="mdi mdi-help-circle-outline text-lg"></i>
             <span>Help</span>
           </button>
@@ -40,7 +46,7 @@
           <div class="relative" v-if="isAuthenticated">
             <button
               @click="toggleUserMenu"
-              class="flex items-center gap-1 text-sm text-gray-700 hover:text-orange-500 transition-colors"
+              class="flex items-center gap-1 text-sm text-gray-700 hover:text-primary transition-colors"
             >
               <i class="mdi mdi-account-circle-outline text-lg"></i>
               <span class="hidden sm:inline">Account</span>
@@ -89,7 +95,7 @@
           <router-link
             v-else
             to="/login"
-            class="flex items-center gap-1 text-sm text-gray-700 hover:text-orange-500 transition-colors"
+            class="flex items-center gap-1 text-sm text-gray-700 hover:text-primary transition-colors"
           >
             <i class="mdi mdi-account-circle-outline text-lg"></i>
             <span>Account</span>
@@ -98,13 +104,13 @@
           <!-- Cart -->
           <router-link
             to="/cart"
-            class="relative flex items-center gap-1 text-sm text-gray-700 hover:text-orange-500 transition-colors"
+            class="relative flex items-center gap-1 text-sm text-gray-700 hover:text-primary transition-colors"
           >
             <i class="mdi mdi-cart-outline text-xl"></i>
             <span class="hidden sm:inline">Cart</span>
             <span
               v-if="cartCount > 0"
-              class="absolute -top-2 -right-2 min-w-[18px] h-[18px] px-1 bg-orange-500 text-white text-xs font-semibold rounded-full flex items-center justify-center"
+              class="absolute -top-2 -right-2 min-w-[18px] h-[18px] px-1 bg-primary text-white text-xs font-semibold rounded-full flex items-center justify-center"
             >
               {{ cartCount > 9 ? '9+' : cartCount }}
             </span>
@@ -118,7 +124,7 @@
           v-for="category in categories"
           :key="category.id"
           :to="`/products?category_id=${category.id}`"
-          class="text-sm text-gray-700 hover:text-orange-500 transition-colors"
+          class="text-sm text-gray-700 hover:text-primary transition-colors"
         >
           {{ category.name }}
         </router-link>
@@ -135,13 +141,17 @@ import FlashBanner from '../ui/FlashBanner.vue';
 import { useAuthStore } from '../../stores/auth';
 import { useCartStore } from '../../stores/cart';
 import { useCatalogStore } from '../../stores/catalog';
+import { useSettingsStore } from '../../stores/settings';
 
 const router = useRouter();
 const showUserMenu = ref(false);
 const authStore = useAuthStore();
 const cartStore = useCartStore();
 const catalogStore = useCatalogStore();
+const settingsStore = useSettingsStore();
 
+const siteName = computed(() => settingsStore.siteName || 'Online Mart');
+const siteLogoUrl = computed(() => settingsStore.siteLogoUrl || '');
 const isAuthenticated = computed(() => authStore.isAuthenticated);
 const cartCount = computed(() => cartStore.cartItemCount || 0);
 const categories = computed(() => (catalogStore.categories || []).slice(0, 6));

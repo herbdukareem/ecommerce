@@ -4,30 +4,64 @@
     <LaunchingBanner />
 
     <!-- Hero Section -->
-    <section class="relative bg-gradient-to-br from-primary/10 via-primary/5 to-transparent overflow-hidden">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-          <div class="animate-fade-in-left">
-            <h1 class="text-5xl md:text-6xl font-bold text-primary mb-6 leading-tight">
-              Discover Amazing Products
-            </h1>
-            <p class="text-xl text-secondary mb-8">
-              Shop the latest trends with unbeatable prices and fast shipping. Your satisfaction is our priority.
+    <section
+      v-if="hero.enabled"
+      class="relative overflow-hidden"
+      :class="heroSectionClass"
+      :style="heroSectionStyle"
+    >
+      <div class="absolute inset-0 pointer-events-none" :class="hero.backgroundStyle === 'full_image' ? 'bg-black/35' : 'bg-transparent'"></div>
+
+      <div class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
+        <div :class="heroGridClass">
+          <div :class="heroTextClass">
+            <p v-if="hero.eyebrow" class="mb-4 text-sm font-semibold uppercase tracking-[0.2em]" :class="heroTextOnDark ? 'text-white/75' : 'text-secondary'">
+              {{ hero.eyebrow }}
             </p>
-            <div class="flex flex-wrap gap-4">
-              <Button variant="primary" size="lg" icon="shopping" @click="$router.push('/products')">
-                Shop Now
+            <h1 class="text-5xl md:text-6xl font-bold mb-6 leading-tight" :class="heroTextOnDark ? 'text-white' : 'text-primary'">
+              {{ hero.headline }}
+            </h1>
+            <p class="text-xl mb-8 leading-8" :class="heroTextOnDark ? 'text-white/82' : 'text-secondary'">
+              {{ hero.subheadline }}
+            </p>
+            <div class="flex flex-wrap gap-4" :class="hero.layout === 'centered' || hero.layout === 'full_bleed' ? 'justify-center' : ''">
+              <Button
+                v-if="hero.primaryButtonLabel && hero.primaryButtonUrl"
+                variant="primary"
+                size="lg"
+                icon="shopping"
+                @click="goTo(hero.primaryButtonUrl)"
+              >
+                {{ hero.primaryButtonLabel }}
               </Button>
-              <Button variant="outline" size="lg" icon="tag" @click="$router.push('/products?sale=true')">
-                View Deals
+              <Button
+                v-if="hero.secondaryButtonLabel && hero.secondaryButtonUrl"
+                variant="outline"
+                size="lg"
+                icon="tag"
+                @click="goTo(hero.secondaryButtonUrl)"
+              >
+                {{ hero.secondaryButtonLabel }}
               </Button>
             </div>
           </div>
-          <div class="animate-fade-in-right">
+
+          <div v-if="hero.layout !== 'centered' && hero.layout !== 'full_bleed'" class="animate-fade-in-right" :class="hero.layout === 'image_left' ? 'lg:order-first' : ''">
             <div class="relative">
               <div class="absolute inset-0 bg-gradient-to-br from-primary/20 to-primary-dark/20 rounded-3xl blur-3xl"></div>
-              <div class="relative rounded-3xl shadow-material-5 w-full h-96 bg-gradient-to-br from-primary/20 to-primary-dark/20 flex items-center justify-center">
-                <i class="mdi mdi-shopping text-9xl text-primary/30"></i>
+              <div class="relative rounded-3xl shadow-material-5 w-full h-96 bg-gradient-to-br from-primary/10 to-primary-dark/10 flex items-center justify-center overflow-hidden">
+                <img
+                  v-if="hero.imageUrl"
+                  :src="hero.imageUrl"
+                  :alt="hero.headline"
+                  class="h-full w-full object-cover"
+                />
+                <img
+                  v-else
+                  :src="launchingSoon"
+                  :alt="hero.headline"
+                  class="h-full w-full object-contain p-8"
+                />
               </div>
             </div>
           </div>
@@ -234,6 +268,7 @@ import Card from '../components/ui/Card.vue';
 import Button from '../components/ui/Button.vue';
 import Badge from '../components/ui/Badge.vue';
 import LaunchingBanner from '../components/ui/LaunchingBanner.vue';
+import launchingSoon from '@/assets/images/cart-bag.png';
 import { useCartStore } from '../stores/cart';
 import { useSettingsStore } from '../stores/settings';
 import { useAuthStore } from '../stores/auth';
@@ -255,6 +290,35 @@ const selectedOptionByProduct = ref({});
 const quickAddLoading = ref({});
 
 const formatCurrency = settingsStore.formatCurrency;
+const hero = computed(() => settingsStore.homepageHero);
+const heroTextOnDark = computed(() => ['solid', 'full_image'].includes(hero.value.backgroundStyle));
+const heroSectionClass = computed(() => {
+  if (hero.value.backgroundStyle === 'solid') return 'bg-primary';
+  if (hero.value.backgroundStyle === 'light') return 'bg-surface';
+  return 'bg-gradient-to-br from-primary/10 via-primary/5 to-transparent';
+});
+const heroSectionStyle = computed(() => {
+  if (!hero.value.imageUrl || !['full_bleed', 'full_image'].includes(hero.value.backgroundStyle)) {
+    return {};
+  }
+
+  return {
+    backgroundImage: `url("${hero.value.imageUrl}")`,
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+  };
+});
+const heroGridClass = computed(() => {
+  if (hero.value.layout === 'centered' || hero.value.layout === 'full_bleed') {
+    return 'max-w-4xl mx-auto text-center';
+  }
+
+  return 'grid grid-cols-1 lg:grid-cols-2 gap-12 items-center';
+});
+const heroTextClass = computed(() => {
+  const centered = hero.value.layout === 'centered' || hero.value.layout === 'full_bleed';
+  return centered ? 'animate-fade-in-up' : 'animate-fade-in-left';
+});
 const isAuthenticated = computed(() => authStore.isAuthenticated);
 const isProductOutOfStock = (product) => resolveProductPurchase(product).outOfStock;
 const needsQuickOptionSelection = (product) => {
@@ -420,6 +484,15 @@ const onImageError = (event, fallback) => {
   if (event.target.src !== fallback) {
     event.target.src = fallback;
   }
+};
+
+const goTo = (url) => {
+  if (!url) return;
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    window.location.href = url;
+    return;
+  }
+  router.push(url);
 };
 
 onMounted(async () => {
