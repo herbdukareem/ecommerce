@@ -4,6 +4,7 @@ namespace App\Services;
 
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class CurrencyFormatter
 {
@@ -13,9 +14,17 @@ class CurrencyFormatter
     public function settings(): array
     {
         return Cache::remember('currency_settings', 3600, function () {
-            $settings = DB::table('settings')
-                ->whereIn('key', ['currency', 'currency_symbol', 'currency_precision', 'currency_locale'])
-                ->pluck('value', 'key');
+            try {
+                if (!Schema::hasTable('settings')) {
+                    return $this->defaults();
+                }
+
+                $settings = DB::table('settings')
+                    ->whereIn('key', ['currency', 'currency_symbol', 'currency_precision', 'currency_locale'])
+                    ->pluck('value', 'key');
+            } catch (\Throwable) {
+                return $this->defaults();
+            }
 
             return [
                 'code' => (string) ($settings['currency'] ?? 'NGN'),
@@ -32,5 +41,15 @@ class CurrencyFormatter
         $number = number_format((float) ($amount ?? 0), $settings['precision']);
 
         return trim($settings['symbol'] . $number);
+    }
+
+    protected function defaults(): array
+    {
+        return [
+            'code' => 'NGN',
+            'symbol' => 'NGN',
+            'precision' => 2,
+            'locale' => 'en-NG',
+        ];
     }
 }

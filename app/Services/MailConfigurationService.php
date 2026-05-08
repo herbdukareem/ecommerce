@@ -78,7 +78,15 @@ class MailConfigurationService
     protected function settings(): array
     {
         return Cache::remember('site_settings', 3600, function () {
-            return DB::table('settings')->pluck('value', 'key')->toArray();
+            try {
+                if (!Schema::hasTable('settings')) {
+                    return [];
+                }
+
+                return DB::table('settings')->pluck('value', 'key')->toArray();
+            } catch (\Throwable) {
+                return [];
+            }
         });
     }
 

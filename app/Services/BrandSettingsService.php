@@ -12,11 +12,15 @@ class BrandSettingsService
     public function settings(): array
     {
         return Cache::remember('brand_settings', 3600, function () {
-            if (!Schema::hasTable('settings')) {
+            try {
+                if (!Schema::hasTable('settings')) {
+                    return $this->defaults();
+                }
+
+                $settings = DB::table('settings')->pluck('value', 'key')->toArray();
+            } catch (\Throwable) {
                 return $this->defaults();
             }
-
-            $settings = DB::table('settings')->pluck('value', 'key')->toArray();
 
             return array_merge($this->defaults(), [
                 'site_name' => (string) ($settings['site_name'] ?? $this->defaults()['site_name']),

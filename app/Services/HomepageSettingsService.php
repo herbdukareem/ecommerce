@@ -12,11 +12,15 @@ class HomepageSettingsService
     public function settings(): array
     {
         return Cache::remember('homepage_settings', 3600, function () {
-            if (!Schema::hasTable('settings')) {
+            try {
+                if (!Schema::hasTable('settings')) {
+                    return $this->defaults();
+                }
+
+                $settings = DB::table('settings')->pluck('value', 'key')->toArray();
+            } catch (\Throwable) {
                 return $this->defaults();
             }
-
-            $settings = DB::table('settings')->pluck('value', 'key')->toArray();
 
             return array_merge($this->defaults(), [
                 'homepage_flash_enabled' => $this->bool($settings['homepage_flash_enabled'] ?? true),
