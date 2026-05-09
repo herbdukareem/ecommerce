@@ -37,6 +37,8 @@ Route::get('/checkout/areas', [App\Http\Controllers\CheckoutController::class, '
 Route::get('/checkout/dispatch-time-slots', [App\Http\Controllers\CheckoutController::class, 'dispatchTimeSlots']);
 Route::get('/settings/public', [App\Http\Controllers\Admin\SettingsController::class, 'publicSettings']);
 Route::get('/settings/currency', [App\Http\Controllers\Admin\SettingsController::class, 'getCurrency']);
+Route::post('/newsletter/subscribe', [App\Http\Controllers\NewsletterController::class, 'subscribe'])
+    ->middleware('throttle:5,1');
 
 // Public catalog routes (no auth required)
 Route::get('/products', [App\Http\Controllers\CatalogController::class, 'index']);

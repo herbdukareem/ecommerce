@@ -106,14 +106,17 @@
               type="email"
               placeholder="Enter your email"
               class="w-full px-4 py-2.5 rounded-lg border border-DEFAULT bg-base text-primary placeholder-secondary/50 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
+              :disabled="subscribing"
               required
             />
             <button
               type="submit"
               class="w-full px-4 py-2.5 rounded-lg bg-primary text-white font-medium hover:shadow-material-3 transition-all flex items-center justify-center gap-2"
+              :disabled="subscribing"
+              :class="{ 'opacity-70 cursor-not-allowed': subscribing }"
             >
-              <i class="mdi mdi-email-outline"></i>
-              <span>Subscribe</span>
+              <i class="mdi" :class="subscribing ? 'mdi-loading mdi-spin' : 'mdi-email-outline'"></i>
+              <span>{{ subscribing ? 'Subscribing...' : 'Subscribe' }}</span>
             </button>
           </form>
         </div>
@@ -138,20 +141,44 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { computed, inject, ref } from 'vue';
+import axios from 'axios';
 import { useSettingsStore } from '../../stores/settings';
 
 const email = ref('');
+const subscribing = ref(false);
 const settingsStore = useSettingsStore();
+const toast = inject('toast');
 const currentYear = computed(() => new Date().getFullYear());
 const siteName = computed(() => settingsStore.siteName || 'Online Mart');
 const siteDescription = computed(() => settingsStore.siteDescription || 'Your one-stop shop for quality products, fast delivery, and everyday value.');
 const siteLogoUrl = computed(() => settingsStore.siteLogoUrl || '');
 
-const subscribe = () => {
-  // Implement newsletter subscription
-  console.log('Subscribing:', email.value);
-  email.value = '';
+const subscribe = async () => {
+  const address = email.value.trim();
+  if (!address || subscribing.value) {
+    return;
+  }
+
+  subscribing.value = true;
+
+  try {
+    const { data } = await axios.post('/api/newsletter/subscribe', {
+      email: address,
+      source: 'footer',
+    });
+
+    toast?.success(data?.message || 'Thanks for subscribing.');
+    email.value = '';
+  } catch (error) {
+    const message = error.response?.data?.message
+      || error.response?.data?.errors?.email?.[0]
+      || 'Unable to subscribe right now.';
+
+    toast?.error(message);
+  } finally {
+    subscribing.value = false;
+  }
 };
 </script>
 
