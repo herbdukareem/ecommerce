@@ -25,20 +25,55 @@
       </div>
 
       <!-- Navigation -->
-      <nav class="flex-1 overflow-y-auto p-4 space-y-1">
-        <router-link
-          v-for="item in navigation"
-          :key="item.path"
-          :to="item.path"
-          class="flex items-center gap-3 px-4 py-3 rounded-lg text-secondary hover:bg-primary/10 hover:text-primary transition-all group"
-          active-class="bg-primary text-white hover:bg-primary hover:text-white"
-        >
-          <i :class="`mdi mdi-${item.icon} text-xl`"></i>
-          <span class="font-medium">{{ item.label }}</span>
-          <Badge v-if="item.badge" :variant="item.badgeVariant || 'primary'" size="sm" class="ml-auto">
-            {{ item.badge }}
-          </Badge>
-        </router-link>
+      <nav class="flex-1 overflow-y-auto p-4 space-y-2">
+        <div v-for="group in navigation" :key="group.key || group.path">
+          <router-link
+            v-if="!group.children"
+            :to="group.path"
+            class="flex items-center gap-3 rounded-lg px-4 py-3 text-secondary transition-all hover:bg-primary/10 hover:text-primary"
+            :class="isNavItemActive(group) ? 'bg-primary text-white hover:bg-primary hover:text-white' : ''"
+            @click="sidebarOpen = false"
+          >
+            <i :class="`mdi mdi-${group.icon} text-xl`"></i>
+            <span class="font-medium">{{ group.label }}</span>
+            <Badge v-if="group.badge" :variant="group.badgeVariant || 'primary'" size="sm" class="ml-auto">
+              {{ group.badge }}
+            </Badge>
+          </router-link>
+
+          <div v-else>
+            <button
+              type="button"
+              class="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-secondary transition-all hover:bg-primary/10 hover:text-primary"
+              :class="isGroupActive(group) ? 'bg-primary/10 text-primary' : ''"
+              @click="toggleGroup(group.key)"
+            >
+              <i :class="`mdi mdi-${group.icon} text-xl`"></i>
+              <span class="flex-1 font-medium">{{ group.label }}</span>
+              <i
+                class="mdi mdi-chevron-down text-lg transition-transform"
+                :class="{ 'rotate-180': openGroups[group.key] }"
+              ></i>
+            </button>
+
+            <div v-show="openGroups[group.key]" class="mt-1 space-y-1 pl-3">
+              <router-link
+                v-for="item in group.children"
+                :key="item.path"
+                :to="item.path"
+                class="flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm text-secondary transition-all hover:bg-primary/10 hover:text-primary"
+                :class="isNavItemActive(item) ? 'bg-primary text-white hover:bg-primary hover:text-white' : ''"
+                @click="sidebarOpen = false"
+              >
+                <i :class="`mdi mdi-${item.icon} text-lg`"></i>
+                <span class="font-medium">{{ item.label }}</span>
+                <Badge v-if="item.badge" :variant="item.badgeVariant || 'primary'" size="sm" class="ml-auto">
+                  {{ item.badge }}
+                </Badge>
+              </router-link>
+            </div>
+          </div>
+        </div>
       </nav>
 
       <!-- User Profile -->
@@ -121,15 +156,17 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { computed, reactive, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import Badge from '../ui/Badge.vue';
 import { useAuthStore } from '../../stores/auth';
 import { useCartStore } from '../../stores/cart';
 import { useSettingsStore } from '../../stores/settings';
 
 const router = useRouter();
+const route = useRoute();
 const sidebarOpen = ref(false);
+const openGroups = reactive({});
 const authStore = useAuthStore();
 const cartStore = useCartStore();
 const settingsStore = useSettingsStore();
@@ -148,25 +185,92 @@ const handleLogout = async () => {
 
 const navigation = [
   { path: '/admin/dashboard', icon: 'view-dashboard', label: 'Dashboard' },
-  { path: '/admin/orders', icon: 'package-variant', label: 'Orders', badge: '12', badgeVariant: 'danger' },
-  { path: '/admin/orders/create', icon: 'cart-plus', label: 'Create Order' },
-  { path: '/admin/products', icon: 'tag-multiple', label: 'Products' },
-  { path: '/admin/categories', icon: 'shape', label: 'Categories' },
-  // { path: '/admin/vendors', icon: 'store', label: 'Vendors', badge: '3', badgeVariant: 'warning' },
-  // { path: '/admin/zones', icon: 'map-marker-radius', label: 'Shipping Zones' },
-  { path: '/admin/delivery-partners', icon: 'bike-fast', label: 'Delivery Partners' },
-  { path: '/admin/dispatch-riders', icon: 'account-hard-hat', label: 'Dispatch Riders' },
-  { path: '/admin/dispatch-time-slots', icon: 'clock-outline', label: 'Dispatch Slots' },
-  { path: '/admin/operation-cities', icon: 'city', label: 'Operation Cities' },
-  { path: '/admin/operation-areas', icon: 'map-marker', label: 'Operation Areas' },
-  { path: '/admin/inventory', icon: 'archive-plus', label: 'Inventory' },
-  { path: '/admin/inventory-ledger', icon: 'clipboard-list-outline', label: 'Inventory Ledger' },
-  { path: '/admin/expiry-alerts', icon: 'calendar-alert', label: 'Expiry Alerts' },
-  { path: '/admin/profit-margins', icon: 'chart-box-outline', label: 'Profit Margins' },
-  { path: '/admin/analytics', icon: 'chart-line', label: 'Analytics' },
-  { path: '/admin/payment-gateways', icon: 'credit-card-cog', label: 'Payment Gateways' },
-  { path: '/admin/roles-permissions', icon: 'shield-account', label: 'Roles & Permissions' },
-  { path: '/admin/settings', icon: 'cog-outline', label: 'Settings' },
+  {
+    key: 'sales',
+    icon: 'receipt-text-outline',
+    label: 'Sales',
+    children: [
+      { path: '/admin/orders', icon: 'package-variant', label: 'Orders', badge: '12', badgeVariant: 'danger', exact: true },
+      { path: '/admin/orders/create', icon: 'cart-plus', label: 'Create Order' },
+    ],
+  },
+  {
+    key: 'catalog',
+    icon: 'storefront-outline',
+    label: 'Catalog',
+    children: [
+      { path: '/admin/products', icon: 'tag-multiple', label: 'Products' },
+      { path: '/admin/categories', icon: 'shape', label: 'Categories' },
+      { path: '/admin/inventory', icon: 'archive-plus', label: 'Inventory', exact: true },
+      { path: '/admin/inventory-ledger', icon: 'clipboard-list-outline', label: 'Inventory Ledger' },
+      { path: '/admin/expiry-alerts', icon: 'calendar-alert', label: 'Expiry Alerts' },
+    ],
+  },
+  {
+    key: 'logistics',
+    icon: 'truck-delivery-outline',
+    label: 'Logistics',
+    children: [
+      { path: '/admin/delivery-partners', icon: 'bike-fast', label: 'Delivery Partners' },
+      { path: '/admin/dispatch-riders', icon: 'account-hard-hat', label: 'Dispatch Riders' },
+      { path: '/admin/dispatch-time-slots', icon: 'clock-outline', label: 'Dispatch Slots' },
+      { path: '/admin/operation-cities', icon: 'city', label: 'Operation Cities' },
+      { path: '/admin/operation-areas', icon: 'map-marker', label: 'Operation Areas' },
+    ],
+  },
+  {
+    key: 'marketing',
+    icon: 'bullhorn-outline',
+    label: 'Marketing',
+    children: [
+      { path: '/admin/newsletter-subscribers', icon: 'email-newsletter', label: 'Newsletter' },
+    ],
+  },
+  {
+    key: 'reports',
+    icon: 'chart-line',
+    label: 'Reports',
+    children: [
+      { path: '/admin/analytics', icon: 'chart-line', label: 'Analytics' },
+      { path: '/admin/profit-margins', icon: 'chart-box-outline', label: 'Profit Margins' },
+    ],
+  },
+  {
+    key: 'administration',
+    icon: 'cog-outline',
+    label: 'Administration',
+    children: [
+      { path: '/admin/payment-gateways', icon: 'credit-card-cog', label: 'Payment Gateways' },
+      { path: '/admin/roles-permissions', icon: 'shield-account', label: 'Roles & Permissions' },
+      { path: '/admin/settings', icon: 'cog-outline', label: 'Settings' },
+    ],
+  },
 ];
+
+const isNavItemActive = (item) => {
+  if (route.path === item.path) {
+    return true;
+  }
+
+  return !item.exact && route.path.startsWith(`${item.path}/`);
+};
+
+const isGroupActive = (group) => group.children?.some(isNavItemActive);
+
+const toggleGroup = (key) => {
+  openGroups[key] = !openGroups[key];
+};
+
+watch(
+  () => route.path,
+  () => {
+    navigation.forEach((group) => {
+      if (group.children && isGroupActive(group)) {
+        openGroups[group.key] = true;
+      }
+    });
+  },
+  { immediate: true }
+);
 </script>
 

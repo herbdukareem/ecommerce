@@ -187,6 +187,13 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('/settings/currency', [App\Http\Controllers\Admin\SettingsController::class, 'getCurrency']);
         Route::put('/settings/currency', [App\Http\Controllers\Admin\SettingsController::class, 'updateCurrency']);
 
+        // Newsletter subscribers
+        Route::get('/newsletter-subscribers', [App\Http\Controllers\Admin\NewsletterSubscriberController::class, 'index']);
+        Route::get('/newsletter-subscribers/export', [App\Http\Controllers\Admin\NewsletterSubscriberController::class, 'export']);
+        Route::post('/newsletter-subscribers/send', [App\Http\Controllers\Admin\NewsletterSubscriberController::class, 'send']);
+        Route::patch('/newsletter-subscribers/{subscriber}/status', [App\Http\Controllers\Admin\NewsletterSubscriberController::class, 'updateStatus']);
+        Route::delete('/newsletter-subscribers/{subscriber}', [App\Http\Controllers\Admin\NewsletterSubscriberController::class, 'destroy']);
+
         // Payment Gateways Management
         Route::get('/payment-gateways', [App\Http\Controllers\Admin\PaymentGatewayController::class, 'index']);
         Route::put('/payment-gateways/{provider}', [App\Http\Controllers\Admin\PaymentGatewayController::class, 'update']);

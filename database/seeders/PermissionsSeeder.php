@@ -109,6 +109,9 @@ class PermissionsSeeder extends Seeder
             'payment.view',
             'payment.update',
             'report.view',
+            'newsletter.view',
+            'newsletter.create',
+            'newsletter.manage',
         ];
 
         foreach ($permissions as $permission) {

@@ -44,6 +44,7 @@ const AdminInventoryLedger = () => import('../views/admin/InventoryLedger.vue');
 const AdminExpiryAlerts = () => import('../views/admin/ExpiryAlerts.vue');
 const AdminProfitMargins = () => import('../views/admin/ProfitMargins.vue');
 const AdminRolesPermissions = () => import('../views/admin/RolesPermissions.vue');
+const AdminNewsletterSubscribers = () => import('../views/admin/NewsletterSubscribers.vue');
 
 const routes = [
   // Public routes
@@ -209,6 +210,12 @@ const routes = [
     path: '/admin/roles-permissions',
     name: 'AdminRolesPermissions',
     component: AdminRolesPermissions,
+    meta: { requiresAdmin: true }
+  },
+  {
+    path: '/admin/newsletter-subscribers',
+    name: 'AdminNewsletterSubscribers',
+    component: AdminNewsletterSubscribers,
     meta: { requiresAdmin: true }
   },
 ];
