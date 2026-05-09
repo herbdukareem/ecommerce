@@ -21,18 +21,23 @@
         </router-link>
 
         <!-- Search Bar (Desktop) -->
-        <div class="hidden md:flex flex-1 max-w-2xl mx-8">
+        <form class="hidden md:flex flex-1 max-w-2xl mx-8" @submit.prevent="submitSearch">
           <div class="relative w-full flex">
             <input
+              v-model="searchQuery"
               type="search"
               placeholder="Search products, brands and categories"
               class="flex-1 px-4 py-2.5 border border-gray-300 rounded-l-md text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:border-primary"
             />
-            <button class="px-6 bg-primary text-white rounded-r-md hover:bg-primary-dark transition-colors">
+            <button
+              type="submit"
+              class="px-6 bg-primary text-white rounded-r-md hover:bg-primary-dark transition-colors"
+              aria-label="Search products"
+            >
               <i class="mdi mdi-magnify text-xl"></i>
             </button>
           </div>
-        </div>
+        </form>
 
         <!-- Navigation -->
         <nav class="flex items-center gap-4">
@@ -135,8 +140,8 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { computed, onMounted, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import FlashBanner from '../ui/FlashBanner.vue';
 import { useAuthStore } from '../../stores/auth';
 import { useCartStore } from '../../stores/cart';
@@ -144,7 +149,9 @@ import { useCatalogStore } from '../../stores/catalog';
 import { useSettingsStore } from '../../stores/settings';
 
 const router = useRouter();
+const route = useRoute();
 const showUserMenu = ref(false);
+const searchQuery = ref('');
 const authStore = useAuthStore();
 const cartStore = useCartStore();
 const catalogStore = useCatalogStore();
@@ -155,6 +162,10 @@ const siteLogoUrl = computed(() => settingsStore.siteLogoUrl || '');
 const isAuthenticated = computed(() => authStore.isAuthenticated);
 const cartCount = computed(() => cartStore.cartItemCount || 0);
 const categories = computed(() => (catalogStore.categories || []).slice(0, 6));
+const routeSearchQuery = computed(() => {
+  const raw = route.query.q;
+  return Array.isArray(raw) ? (raw[0] || '') : (raw || '');
+});
 
 const toggleUserMenu = () => {
   showUserMenu.value = !showUserMenu.value;
@@ -166,6 +177,24 @@ const logout = async () => {
   showUserMenu.value = false;
   router.push('/');
 };
+
+const submitSearch = () => {
+  const q = searchQuery.value.trim();
+  router.push({
+    name: 'Products',
+    query: q ? { q } : {},
+  });
+};
+
+watch(
+  () => [route.name, routeSearchQuery.value],
+  ([routeName, q]) => {
+    if (routeName === 'Products') {
+      searchQuery.value = q || '';
+    }
+  },
+  { immediate: true }
+);
 
 onMounted(async () => {
   if (!catalogStore.categories.length) {

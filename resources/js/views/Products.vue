@@ -206,6 +206,11 @@ const routeCategoryId = computed(() => {
   return value ? Number(value) || null : null;
 });
 
+const routeSearchQuery = computed(() => {
+  const raw = route.query.q;
+  return Array.isArray(raw) ? (raw[0] || '') : (raw || '');
+});
+
 const sortOptions = [
   { value: 'newest', label: 'Newest' },
   { value: 'oldest', label: 'Oldest' },
@@ -311,6 +316,7 @@ const syncFiltersToStore = () => {
 };
 
 const syncFiltersFromRoute = () => {
+  localFilters.q = routeSearchQuery.value;
   localFilters.category_id = routeCategoryId.value;
 };
 
@@ -415,8 +421,8 @@ onMounted(async () => {
   await applyFilters();
 });
 
-watch(routeCategoryId, async (categoryId, previousCategoryId) => {
-  if (categoryId === previousCategoryId) {
+watch([routeCategoryId, routeSearchQuery], async ([categoryId, q], [previousCategoryId, previousQ]) => {
+  if (categoryId === previousCategoryId && q === previousQ) {
     return;
   }
 

@@ -31,11 +31,7 @@ class CatalogController extends Controller
 
         // Search query
         if ($request->filled('q')) {
-            $searchTerm = $request->q;
-            $query->where(function ($q) use ($searchTerm) {
-                $q->where('title', 'like', "%{$searchTerm}%")
-                  ->orWhere('description', 'like', "%{$searchTerm}%");
-            });
+            $this->applySearchQuery($query, (string) $request->q);
         }
 
         // Category filter
@@ -210,8 +206,7 @@ class CatalogController extends Controller
         $results = Product::with(['skus.stocks', 'skus.images'])
             ->where('status', 'active')
             ->where(function ($query) use ($request) {
-                $query->where('title', 'like', "%{$request->q}%")
-                      ->orWhere('description', 'like', "%{$request->q}%");
+                $this->applySearchQuery($query, (string) $request->q);
             })
             ->limit(10)
             ->get()
@@ -220,6 +215,28 @@ class CatalogController extends Controller
             });
 
         return response()->json($results);
+    }
+
+    protected function applySearchQuery($query, string $searchTerm): void
+    {
+        $like = '%' . $searchTerm . '%';
+
+        $query->where(function ($q) use ($like) {
+            $q->where('title', 'like', $like)
+                ->orWhere('name', 'like', $like)
+                ->orWhere('description', 'like', $like)
+                ->orWhereHas('categories', function ($categoryQuery) use ($like) {
+                    $categoryQuery->where('name', 'like', $like);
+                })
+                ->orWhereHas('vendor', function ($vendorQuery) use ($like) {
+                    $vendorQuery->where('name', 'like', $like);
+                })
+                ->orWhereHas('skus', function ($skuQuery) use ($like) {
+                    $skuQuery->where('sku_code', 'like', $like)
+                        ->orWhere('option_label', 'like', $like)
+                        ->orWhere('option_code', 'like', $like);
+                });
+        });
     }
 
     /**
