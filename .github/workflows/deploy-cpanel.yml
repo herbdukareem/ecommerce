@@ -114,13 +114,15 @@ jobs:
               echo "Using PHP:"
               ${{ secrets.HOSTINGER_PHP_BIN }} -v
 
-              ${{ secrets.HOSTINGER_PHP_BIN }} artisan migrate --force
-              ${{ secrets.HOSTINGER_PHP_BIN }} artisan storage:link || true
-
               ${{ secrets.HOSTINGER_PHP_BIN }} artisan config:clear
               ${{ secrets.HOSTINGER_PHP_BIN }} artisan cache:clear
               ${{ secrets.HOSTINGER_PHP_BIN }} artisan route:clear
               ${{ secrets.HOSTINGER_PHP_BIN }} artisan view:clear
+
+              ${{ secrets.HOSTINGER_PHP_BIN }} artisan about --only=environment
+
+              ${{ secrets.HOSTINGER_PHP_BIN }} artisan migrate --force
+              ${{ secrets.HOSTINGER_PHP_BIN }} artisan storage:link || true
 
               ${{ secrets.HOSTINGER_PHP_BIN }} artisan config:cache
               ${{ secrets.HOSTINGER_PHP_BIN }} artisan route:cache

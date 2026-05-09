@@ -11,7 +11,7 @@ class HomepageSettingsService
 {
     public function settings(): array
     {
-        return Cache::remember('homepage_settings', 3600, function () {
+        return Cache::store('array')->remember('homepage_settings', 3600, function () {
             try {
                 if (!Schema::hasTable('settings')) {
                     return $this->defaults();

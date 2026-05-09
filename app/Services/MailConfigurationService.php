@@ -72,12 +72,12 @@ class MailConfigurationService
 
     public function forgetCache(): void
     {
-        Cache::forget('site_settings');
+        Cache::store('array')->forget('site_settings');
     }
 
     protected function settings(): array
     {
-        return Cache::remember('site_settings', 3600, function () {
+        return Cache::store('array')->remember('site_settings', 3600, function () {
             try {
                 if (!Schema::hasTable('settings')) {
                     return [];

@@ -13,7 +13,7 @@ class CurrencyFormatter
      */
     public function settings(): array
     {
-        return Cache::remember('currency_settings', 3600, function () {
+        return Cache::store('array')->remember('currency_settings', 3600, function () {
             try {
                 if (!Schema::hasTable('settings')) {
                     return $this->defaults();
