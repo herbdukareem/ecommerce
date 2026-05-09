@@ -246,6 +246,67 @@ class OperationsAndInventoryTest extends TestCase
             ->assertJsonFragment(['id' => $batchId]);
     }
 
+    public function test_inventory_selling_price_overrides_storefront_cart_and_order_prices(): void
+    {
+        $admin = $this->makeUserWithRole('Admin', 'admin-inventory-price@test.com');
+        $customer = $this->makeUserWithRole('Customer', 'customer-inventory-price@test.com');
+        $vendor = $this->makeUserWithRole('Vendor', 'vendor-inventory-price@test.com');
+        $commerce = $this->makeProductWithStock($vendor);
+
+        Sanctum::actingAs($admin);
+
+        $this->postJson('/api/admin/inventory/add-stock', [
+            'sku_id' => $commerce['sku']->id,
+            'quantity' => 5,
+            'cost_price' => 45,
+            'selling_price' => 80,
+        ])->assertCreated();
+
+        $this->assertSame(80.0, (float) $commerce['sku']->fresh()->price);
+        $this->assertSame(80.0, (float) $commerce['product']->fresh()->base_price);
+        $this->assertSame(80.0, (float) $commerce['product']->fresh()->price);
+
+        $catalogProducts = $this->getJson('/api/products?per_page=10')
+            ->assertOk()
+            ->json('data');
+        $catalogProduct = collect($catalogProducts)->firstWhere('id', $commerce['product']->id);
+
+        $this->assertNotNull($catalogProduct);
+        $this->assertSame(80.0, (float) $catalogProduct['base_price']);
+        $this->assertSame(80.0, (float) $catalogProduct['display_price']);
+
+        Sanctum::actingAs($customer);
+
+        $this->postJson('/api/cart/items', [
+            'sku_id' => $commerce['sku']->id,
+            'quantity' => 1,
+        ])->assertCreated();
+
+        $this->getJson('/api/cart')
+            ->assertOk()
+            ->assertJsonPath('items.0.price', 80)
+            ->assertJsonPath('items.0.subtotal', 80);
+
+        [$city, $area, $slot] = $this->createOpsMasters();
+
+        $orderId = $this->postJson('/api/checkout/place-order', [
+            'city_id' => $city->id,
+            'area_id' => $area->id,
+            'dispatch_time_slot_id' => $slot->id,
+            'payment_mode' => 'paystack',
+        ])->assertCreated()->json('order.id');
+
+        $this->assertDatabaseHas('orders', [
+            'id' => $orderId,
+            'subtotal' => 80,
+        ]);
+        $this->assertDatabaseHas('order_items', [
+            'order_id' => $orderId,
+            'sku_id' => $commerce['sku']->id,
+            'price_snapshot' => 80,
+        ]);
+    }
+
     public function test_admin_products_index_uses_central_inventory_available_stock(): void
     {
         $admin = $this->makeUserWithRole('Admin', 'admin-products-stock@test.com');

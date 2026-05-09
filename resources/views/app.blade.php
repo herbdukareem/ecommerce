@@ -10,7 +10,7 @@
         everything now lives at the project root, reference the assets
         directly in resources/js.
     --}}
-    @vite(['resources/js/index.css', 'resources/js/main.js'])
+    @vite([ 'resources/js/main.js'])
 </head>
 <body class="antialiased">
     <div id="app"></div>

@@ -45,7 +45,7 @@ class OrderPlacementService
                 ]);
             }
 
-            $subtotal = (float) $cart->items->sum(fn ($item) => $item->price * $item->quantity);
+            $subtotal = (float) $cart->items->sum(fn ($item) => (float) $item->sku->price * (int) $item->quantity);
             $discount = (float) ($cart->coupon_discount ?? 0);
             $deliveryFee = (float) ($area->delivery_fee ?? 0);
             $tax = 0;
@@ -89,7 +89,7 @@ class OrderPlacementService
                     'product_option_id' => $cartItem->sku_id,
                     'product_id' => $cartItem->sku?->product_id,
                     'quantity' => $cartItem->quantity,
-                    'price_snapshot' => $cartItem->price,
+                    'price_snapshot' => (float) $cartItem->sku->price,
                     'product_name_snapshot' => $cartItem->product_name_snapshot ?: $cartItem->sku?->product?->title,
                     'option_label_snapshot' => $cartItem->option_label_snapshot,
                     'image_snapshot' => $cartItem->image_snapshot ?: $cartItem->sku?->product?->image,

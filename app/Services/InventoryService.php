@@ -216,6 +216,8 @@ class InventoryService
                 'created_by' => $performedBy->id,
             ]);
 
+            $this->syncSkuAndProductPrice($sku, (float) $payload['selling_price'], (float) $payload['cost_price'], $performedBy);
+
             $warehouse = Warehouse::firstOrCreate(
                 ['vendor_id' => $product->vendor_id, 'name' => 'Default Warehouse'],
                 ['location_id' => null]
@@ -386,5 +388,31 @@ class InventoryService
     protected function recordLedger(array $payload): InventoryLedgerEntry
     {
         return InventoryLedgerEntry::create($payload);
+    }
+
+    protected function syncSkuAndProductPrice(Sku $sku, float $sellingPrice, float $costPrice, User $performedBy): void
+    {
+        $sku->update([
+            'price' => $sellingPrice,
+            'cost' => $costPrice,
+            'cost_price' => $costPrice,
+            'updated_by' => $performedBy->id,
+        ]);
+
+        $product = $sku->product()->with('skus')->first();
+        if (!$product) {
+            return;
+        }
+
+        $productPrice = (bool) $product->has_options
+            ? (float) ($product->skus
+                ->where('active', true)
+                ->min('price') ?? $sellingPrice)
+            : $sellingPrice;
+
+        $product->update([
+            'base_price' => $productPrice,
+            'price' => $productPrice,
+        ]);
     }
 }

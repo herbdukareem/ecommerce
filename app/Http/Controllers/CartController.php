@@ -62,7 +62,7 @@ class CartController extends Controller
                     return $stock->on_hand - $stock->reserved;
                 });
 
-                $unitPrice = (float) ($item->price ?? $sku->price);
+                $unitPrice = (float) $sku->price;
                 $optionLabel = $item->option_label_snapshot ?: ($item->productOption?->display_label ?? $sku->display_label ?? null);
 
                 return [
@@ -200,7 +200,13 @@ class CartController extends Controller
                 ], 422);
             }
 
-            $cartItem->update(['quantity' => $newQuantity]);
+            $cartItem->update([
+                'quantity' => $newQuantity,
+                'price' => $sku->price,
+                'product_name_snapshot' => $product->title,
+                'option_label_snapshot' => $product->has_options ? $sku->display_label : null,
+                'image_snapshot' => $sku->image_path ?: $product->image,
+            ]);
         } else {
             $cartItem = $cart->items()->create([
                 'sku_id' => $sku->id,
@@ -244,7 +250,10 @@ class CartController extends Controller
             ], 422);
         }
 
-        $cartItem->update(['quantity' => $request->quantity]);
+        $cartItem->update([
+            'quantity' => $request->quantity,
+            'price' => $cartItem->sku->price,
+        ]);
 
         return response()->json([
             'message' => 'Cart item updated',
@@ -292,7 +301,7 @@ class CartController extends Controller
             'code' => 'required|string|max:64',
         ]);
 
-        $cart = $this->getCart($request)->load('items', 'coupon');
+        $cart = $this->getCart($request)->load('items.sku', 'coupon');
         if ($cart->items->isEmpty()) {
             return response()->json([
                 'message' => 'Cannot apply coupon to an empty cart',
@@ -306,7 +315,7 @@ class CartController extends Controller
             ], 422);
         }
 
-        $subtotal = (float) $cart->items->sum(fn ($item) => $item->price * $item->quantity);
+        $subtotal = (float) $cart->items->sum(fn ($item) => (float) $item->sku->price * (int) $item->quantity);
         if (!$coupon->isUsable($subtotal)) {
             return response()->json([
                 'message' => 'Coupon is not valid for this cart',

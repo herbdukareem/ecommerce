@@ -69,43 +69,6 @@
       </div>
     </section>
 
-    <!-- Features -->
-    <section class="py-16 bg-surface">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
-          <Card :elevation="2" hoverable animation="fade-in-up" class="stagger-1 text-center">
-            <div class="flex flex-col items-center">
-              <div class="w-16 h-16 rounded-full bg-success/10 flex items-center justify-center mb-4">
-                <i class="mdi mdi-truck-fast text-3xl text-success"></i>
-              </div>
-              <h3 class="text-lg font-semibold text-primary mb-2">Free Shipping</h3>
-              <p class="text-sm text-secondary">On orders over $50</p>
-            </div>
-          </Card>
-
-          <Card :elevation="2" hoverable animation="fade-in-up" class="stagger-2 text-center">
-            <div class="flex flex-col items-center">
-              <div class="w-16 h-16 rounded-full bg-info/10 flex items-center justify-center mb-4">
-                <i class="mdi mdi-shield-check text-3xl text-info"></i>
-              </div>
-              <h3 class="text-lg font-semibold text-primary mb-2">Secure Payment</h3>
-              <p class="text-sm text-secondary">100% secure transactions</p>
-            </div>
-          </Card>
-
-          <Card :elevation="2" hoverable animation="fade-in-up" class="stagger-3 text-center">
-            <div class="flex flex-col items-center">
-              <div class="w-16 h-16 rounded-full bg-warning/10 flex items-center justify-center mb-4">
-                <i class="mdi mdi-refresh text-3xl text-warning"></i>
-              </div>
-              <h3 class="text-lg font-semibold text-primary mb-2">Easy Returns</h3>
-              <p class="text-sm text-secondary">30-day return policy</p>
-            </div>
-          </Card>
-        </div>
-      </div>
-    </section>
-
     <!-- Featured Products -->
     <section class="py-16">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
