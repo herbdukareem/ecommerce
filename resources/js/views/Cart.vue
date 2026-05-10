@@ -31,75 +31,85 @@
             :elevation="2"
             animation="fade-in-up"
             :class="`stagger-${index + 1}`"
+            no-padding
           >
-            <div class="flex gap-4">
-              <!-- Product Image -->
-              <div class="w-24 h-24 flex-shrink-0 bg-gradient-to-br from-primary/10 to-primary-dark/10 rounded-lg flex items-center justify-center overflow-hidden">
-                <img
-                  :src="item.product_image || '/images/placeholders/product-placeholder.svg'"
-                  :alt="item.product_title"
-                  class="w-full h-full object-cover"
-                  @error="onImageError"
-                />
-              </div>
-
-              <!-- Product Info -->
-              <div class="flex-1 min-w-0">
-                <h3 class="font-semibold text-primary mb-1 truncate">{{ item.product_title }}</h3>
-                <p class="text-sm text-secondary mb-2">SKU: {{ item.sku_code }}</p>
-                <p v-if="item.option_label" class="text-xs text-secondary mb-2">Option: {{ item.option_label }}</p>
-
-                <!-- Attributes -->
-                <div v-if="item.attributes" class="flex flex-wrap gap-2 mb-2">
-                  <Badge
-                    v-for="attr in item.attributes"
-                    :key="attr.name"
-                    variant="outline"
-                    size="sm"
-                  >
-                    {{ attr.name }}: {{ attr.value }}
-                  </Badge>
+            <div class="p-4 sm:p-6">
+              <div class="flex gap-3 sm:gap-4">
+                <!-- Product Image -->
+                <div class="h-24 w-24 flex-shrink-0 bg-gradient-to-br from-primary/10 to-primary-dark/10 rounded-lg flex items-center justify-center overflow-hidden sm:h-28 sm:w-28">
+                  <img
+                    :src="item.product_image || '/images/placeholders/product-placeholder.svg'"
+                    :alt="item.product_title"
+                    class="w-full h-full object-cover"
+                    @error="onImageError"
+                  />
                 </div>
 
-                <!-- Price -->
-                <p class="text-lg font-bold text-primary">
-                  {{ formatCurrency(item.price) }}
-                </p>
+                <!-- Product Info -->
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-start justify-between gap-3">
+                    <h3 class="min-w-0 font-semibold text-primary line-clamp-2 text-base sm:text-lg">{{ item.product_title }}</h3>
+                    <button
+                      @click="removeItem(item.id)"
+                      class="flex-shrink-0 text-danger hover:bg-danger/10 p-2 rounded-lg transition-colors"
+                      aria-label="Remove item"
+                    >
+                      <i class="mdi mdi-delete text-xl"></i>
+                    </button>
+                  </div>
+
+                  <div class="mt-2 space-y-1 text-xs text-secondary sm:text-sm">
+                    <p class="break-words"><span class="font-medium">SKU:</span> {{ item.sku_code }}</p>
+                    <p v-if="item.option_label" class="break-words"><span class="font-medium">Option:</span> {{ item.option_label }}</p>
+                  </div>
+
+                  <!-- Attributes -->
+                  <div v-if="item.attributes" class="mt-2 flex flex-wrap gap-2">
+                    <Badge
+                      v-for="attr in item.attributes"
+                      :key="attr.name"
+                      variant="outline"
+                      size="sm"
+                    >
+                      {{ attr.name }}: {{ attr.value }}
+                    </Badge>
+                  </div>
+                </div>
               </div>
 
-              <!-- Quantity Controls -->
-              <div class="flex flex-col items-end justify-between">
-                <button
-                  @click="removeItem(item.id)"
-                  class="text-danger hover:bg-danger/10 p-2 rounded-lg transition-colors"
-                >
-                  <i class="mdi mdi-delete text-xl"></i>
-                </button>
-
-                <div class="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    icon="minus"
-                    icon-only
-                    @click="updateQuantity(item.id, item.quantity - 1)"
+              <div class="mt-4 flex items-center justify-between rounded-lg border border-DEFAULT bg-base px-3 py-2">
+                <span class="text-sm font-medium text-secondary">Quantity</span>
+                <div class="flex items-center gap-3">
+                  <button
+                    type="button"
+                    class="flex h-9 w-9 items-center justify-center rounded-md border border-DEFAULT text-primary transition disabled:opacity-40"
                     :disabled="item.quantity <= 1"
-                  />
-                  <span class="text-lg font-semibold text-primary w-12 text-center">
-                    {{ item.quantity }}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    icon="plus"
-                    icon-only
+                    aria-label="Decrease quantity"
+                    @click="updateQuantity(item.id, item.quantity - 1)"
+                  >
+                    <i class="mdi mdi-minus"></i>
+                  </button>
+                  <span class="w-8 text-center text-lg font-semibold text-primary">{{ item.quantity }}</span>
+                  <button
+                    type="button"
+                    class="flex h-9 w-9 items-center justify-center rounded-md border border-DEFAULT text-primary transition"
+                    aria-label="Increase quantity"
                     @click="updateQuantity(item.id, item.quantity + 1)"
-                  />
+                  >
+                    <i class="mdi mdi-plus"></i>
+                  </button>
                 </div>
+              </div>
 
-                <p class="text-sm text-secondary mt-2">
-                  Subtotal: {{ formatCurrency(item.price * item.quantity) }}
-                </p>
+              <div class="mt-3 flex items-end justify-between gap-4 border-t border-DEFAULT pt-3">
+                <div>
+                  <p class="text-xs text-secondary">Unit price</p>
+                  <p class="text-lg font-bold text-primary">{{ formatCurrency(item.price) }}</p>
+                </div>
+                <div class="text-right">
+                  <p class="text-xs text-secondary">Subtotal</p>
+                  <p class="text-sm font-semibold text-primary sm:text-base">{{ formatCurrency(item.price * item.quantity) }}</p>
+                </div>
               </div>
             </div>
           </Card>

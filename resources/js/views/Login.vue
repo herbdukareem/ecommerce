@@ -1,6 +1,6 @@
 <template>
   <MainLayout>
-    <section class="max-w-md mx-auto px-4 py-12">
+    <section ref="loginSection" class="max-w-md mx-auto px-4 py-12">
       <Card :elevation="2" class="p-6">
         <h1 class="text-2xl font-bold text-primary mb-2">Customer Login</h1>
         <p class="text-sm text-secondary mb-6">Sign in to manage your account and orders.</p>
@@ -8,7 +8,7 @@
         <form class="space-y-4" @submit.prevent="handleLogin">
           <div>
             <label class="block text-sm font-medium text-primary mb-1">Email</label>
-            <input v-model="form.email" type="email" class="w-full border border-DEFAULT rounded-lg px-3 py-2" required />
+            <input ref="emailInput" v-model="form.email" type="email" class="w-full border border-DEFAULT rounded-lg px-3 py-2" required />
           </div>
 
           <div>
@@ -36,7 +36,7 @@
 </template>
 
 <script setup>
-import { reactive, ref } from 'vue';
+import { nextTick, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import MainLayout from '../components/layout/MainLayout.vue';
 import Card from '../components/ui/Card.vue';
@@ -49,6 +49,8 @@ const route = useRoute();
 
 const loading = ref(false);
 const errorMessage = ref('');
+const loginSection = ref(null);
+const emailInput = ref(null);
 const form = reactive({
   email: '',
   password: '',
@@ -73,4 +75,10 @@ const handleLogin = async () => {
   const redirectPath = typeof route.query.redirect === 'string' ? route.query.redirect : '/account';
   router.push(redirectPath);
 };
+
+onMounted(async () => {
+  await nextTick();
+  loginSection.value?.scrollIntoView({ block: 'start' });
+  emailInput.value?.focus({ preventScroll: true });
+});
 </script>
