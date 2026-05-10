@@ -2,8 +2,8 @@
   <MainLayout>
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div class="mb-8 animate-fade-in-down">
-        <h1 class="text-4xl font-bold text-primary mb-2">Products</h1>
-        <p class="text-secondary">Discover our latest catalog</p>
+        <h1 class="text-4xl font-bold text-primary mb-2">{{ pageTitle }}</h1>
+        <p class="text-secondary">{{ pageSubtitle }}</p>
       </div>
 
       <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
@@ -192,6 +192,17 @@ const errorMessage = ref('');
 const openOptionMenuId = ref(null);
 const selectedOptionByProduct = ref({});
 const quickAddLoading = ref({});
+const activeSearchTerm = computed(() => String(localFilters.q || '').trim());
+const pageTitle = computed(() => activeSearchTerm.value ? 'Search Results' : 'Products');
+const pageSubtitle = computed(() => {
+  if (!activeSearchTerm.value) {
+    return 'Discover our latest catalog';
+  }
+
+  const total = Number(pagination.value.total || products.value.length || 0);
+  const label = total === 1 ? 'result' : 'results';
+  return `${total} ${label} found for "${activeSearchTerm.value}"`;
+});
 
 const localFilters = reactive({
   q: '',
