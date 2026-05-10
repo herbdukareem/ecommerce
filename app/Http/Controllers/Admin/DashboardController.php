@@ -209,6 +209,60 @@ class DashboardController extends Controller
         return response()->json($recentOrders);
     }
 
+    public function stockAlerts(Request $request)
+    {
+        $limit = max(1, min((int) $request->integer('limit', 8), 50));
+
+        $stockBalances = DB::table('skus')
+            ->join('products', 'products.id', '=', 'skus.product_id')
+            ->leftJoin('stocks', 'stocks.sku_id', '=', 'skus.id')
+            ->where('skus.active', true)
+            ->where('products.status', 'active')
+            ->select(
+                'skus.id as sku_id',
+                'skus.sku_code',
+                'skus.option_label',
+                'skus.low_stock_threshold',
+                'products.id as product_id',
+                DB::raw('COALESCE(products.title, products.name) as product_title')
+            )
+            ->selectRaw('COALESCE(SUM(CASE WHEN stocks.on_hand > stocks.reserved THEN stocks.on_hand - stocks.reserved ELSE 0 END), 0) as available_stock')
+            ->groupBy('skus.id', 'skus.sku_code', 'skus.option_label', 'skus.low_stock_threshold', 'products.id', 'products.title', 'products.name')
+            ->havingRaw('available_stock <= COALESCE(skus.low_stock_threshold, 5)');
+
+        $alertCounts = DB::query()
+            ->fromSub(clone $stockBalances, 'stock_alerts')
+            ->selectRaw('SUM(CASE WHEN available_stock <= 0 THEN 1 ELSE 0 END) as out_of_stock_count')
+            ->selectRaw('SUM(CASE WHEN available_stock > 0 THEN 1 ELSE 0 END) as low_stock_count')
+            ->first();
+
+        $rows = DB::query()
+            ->fromSub(clone $stockBalances, 'stock_alerts')
+            ->orderBy('available_stock')
+            ->limit($limit)
+            ->get()
+            ->map(function ($row) {
+                $available = (int) $row->available_stock;
+
+                return [
+                    'sku_id' => (int) $row->sku_id,
+                    'sku_code' => $row->sku_code,
+                    'option_label' => $row->option_label,
+                    'product_id' => (int) $row->product_id,
+                    'product_title' => $row->product_title,
+                    'available_stock' => $available,
+                    'low_stock_threshold' => (int) ($row->low_stock_threshold ?? 5),
+                    'status' => $available <= 0 ? 'out_of_stock' : 'low_stock',
+                ];
+            });
+
+        return response()->json([
+            'out_of_stock_count' => (int) ($alertCounts->out_of_stock_count ?? 0),
+            'low_stock_count' => (int) ($alertCounts->low_stock_count ?? 0),
+            'items' => $rows->values(),
+        ]);
+    }
+
     private function periodWindow(Request $request, int $defaultDays = 30): array
     {
         $period = $request->input('period', $defaultDays);

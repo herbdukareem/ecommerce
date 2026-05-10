@@ -14,6 +14,11 @@
             </div>
 
             <div class="mb-6">
+              <h3 class="text-sm font-semibold text-primary mb-3 uppercase tracking-wider">Sort</h3>
+              <Select v-model="localFilters.sort" :options="sortOptions" @update:model-value="applyFilters" />
+            </div>
+
+            <div class="mb-6">
               <h3 class="text-sm font-semibold text-primary mb-3 uppercase tracking-wider">Category</h3>
               <Select
                 v-model="localFilters.category_id"
@@ -45,13 +50,11 @@
         </aside>
 
         <div class="lg:col-span-3">
-          <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+          <div class="flex items-center justify-between gap-4 mb-6">
             <p class="text-sm text-secondary">
               Showing <span class="font-medium text-primary">{{ products.length }}</span>
               of <span class="font-medium text-primary">{{ pagination.total || 0 }}</span>
             </p>
-
-            <Select v-model="localFilters.sort" :options="sortOptions" class="w-56" @update:model-value="applyFilters" />
           </div>
 
           <div v-if="loading" class="py-10 text-center text-secondary">Loading products...</div>

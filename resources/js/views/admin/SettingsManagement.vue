@@ -50,6 +50,10 @@
           <Field label="Phone Number">
             <input v-model="settings.site_phone" type="text" class="form-input" />
           </Field>
+          <Field label="WhatsApp Number">
+            <input v-model="settings.site_whatsapp_number" type="text" class="form-input" placeholder="2348012345678" />
+            <p class="mt-2 text-xs text-gray-500">Use international format without spaces or plus sign, for example 2348012345678.</p>
+          </Field>
           <Field label="Tax Rate (%)">
             <input v-model.number="settings.tax_rate" type="number" step="0.01" class="form-input" />
           </Field>
@@ -308,6 +312,7 @@ const settings = ref({
   site_description: '',
   site_email: '',
   site_phone: '',
+  site_whatsapp_number: '',
   site_logo_path: '',
   site_logo_url: '',
   theme_primary_color: '#063f7c',

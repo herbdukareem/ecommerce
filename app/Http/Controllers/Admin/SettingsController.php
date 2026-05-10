@@ -49,6 +49,7 @@ class SettingsController extends Controller
             'site_description' => 'sometimes|nullable|string',
             'site_email' => 'sometimes|nullable|email',
             'site_phone' => 'sometimes|nullable|string',
+            'site_whatsapp_number' => 'sometimes|nullable|string|max:30',
             'site_logo' => 'sometimes|nullable|image|mimes:jpg,jpeg,png,webp,svg|max:2048',
             'site_logo_path' => 'sometimes|nullable|string|max:1000',
             'theme_primary_color' => ['sometimes', 'string', 'regex:/^#[0-9A-Fa-f]{6}$/'],

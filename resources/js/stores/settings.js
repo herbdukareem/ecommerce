@@ -7,6 +7,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const siteDescription = ref('Your one-stop shop for quality products, fast delivery, and everyday value.');
   const siteEmail = ref('');
   const sitePhone = ref('');
+  const siteWhatsappNumber = ref('');
   const siteLogoUrl = ref('/images/online-mart-logo.png');
   const themePrimaryColor = ref('#063f7c');
   const themeSecondaryColor = ref('#43b02a');
@@ -66,6 +67,7 @@ export const useSettingsStore = defineStore('settings', () => {
     siteDescription.value = settings?.site_description || siteDescription.value;
     siteEmail.value = settings?.site_email || '';
     sitePhone.value = settings?.site_phone || '';
+    siteWhatsappNumber.value = settings?.site_whatsapp_number || '';
     siteLogoUrl.value = settings?.site_logo_url || settings?.site_logo_path || siteLogoUrl.value;
     themePrimaryColor.value = settings?.theme_primary_color || themePrimaryColor.value;
     themeSecondaryColor.value = settings?.theme_secondary_color || themeSecondaryColor.value;
@@ -161,6 +163,7 @@ export const useSettingsStore = defineStore('settings', () => {
     siteDescription,
     siteEmail,
     sitePhone,
+    siteWhatsappNumber,
     siteLogoUrl,
     themePrimaryColor,
     themeSecondaryColor,

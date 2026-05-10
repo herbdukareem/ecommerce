@@ -6,14 +6,14 @@
     <!-- Main Header -->
     <header class="bg-white border-b border-gray-200 shadow-sm">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="flex items-center justify-between h-16">
+        <div class="flex items-center justify-between h-20">
         <!-- Logo -->
         <router-link to="/" class="flex items-center">
           <img
             v-if="siteLogoUrl"
             :src="siteLogoUrl"
             :alt="`${siteName} logo`"
-            class="h-12 w-auto max-w-[160px] object-contain"
+            class="h-20 w-26 max-w-[400px] object-contain"
           />
           <div v-else class="text-2xl font-bold text-primary">
             {{ siteName }}

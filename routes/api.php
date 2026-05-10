@@ -125,6 +125,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('/sales-data', [App\Http\Controllers\Admin\DashboardController::class, 'salesData']);
         Route::get('/top-products', [App\Http\Controllers\Admin\DashboardController::class, 'topProducts']);
         Route::get('/recent-orders', [App\Http\Controllers\Admin\DashboardController::class, 'recentOrders']);
+        Route::get('/stock-alerts', [App\Http\Controllers\Admin\DashboardController::class, 'stockAlerts']);
 
         // User Management
         Route::get('/users', [App\Http\Controllers\AdminController::class, 'users']);

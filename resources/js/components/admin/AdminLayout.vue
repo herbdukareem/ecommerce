@@ -127,10 +127,47 @@
 
         <div class="flex items-center gap-3">
           <!-- Notifications -->
-          <button class="relative p-2 rounded-lg hover:bg-base transition-colors">
+          <div class="relative">
+          <button class="relative p-2 rounded-lg hover:bg-base transition-colors" @click="showStockAlerts = !showStockAlerts">
             <i class="mdi mdi-bell text-xl text-primary"></i>
-            <span class="absolute top-1 right-1 w-2 h-2 bg-danger rounded-full"></span>
+            <span
+              v-if="totalStockAlerts > 0"
+              class="absolute -right-1 -top-1 min-w-[18px] rounded-full bg-danger px-1 text-center text-xs font-semibold text-white"
+            >
+              {{ totalStockAlerts > 9 ? '9+' : totalStockAlerts }}
+            </span>
           </button>
+
+          <div
+            v-if="showStockAlerts"
+            class="absolute right-0 mt-2 w-80 rounded-lg border border-gray-200 bg-white p-4 shadow-lg"
+          >
+            <div class="flex items-center justify-between">
+              <p class="font-semibold text-gray-900">Stock alerts</p>
+              <router-link to="/admin/inventory" class="text-xs font-medium text-primary" @click="showStockAlerts = false">
+                Restock
+              </router-link>
+            </div>
+            <div v-if="stockAlertItems.length === 0" class="mt-4 text-sm text-gray-500">No out-of-stock products.</div>
+            <div v-else class="mt-4 max-h-72 space-y-3 overflow-y-auto">
+              <div v-for="item in stockAlertItems" :key="item.sku_id" class="rounded-md border border-gray-100 p-3">
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <p class="truncate text-sm font-semibold text-gray-900">{{ item.product_title }}</p>
+                    <p class="truncate text-xs text-gray-500">{{ item.option_label || item.sku_code }}</p>
+                  </div>
+                  <span
+                    class="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium"
+                    :class="item.status === 'out_of_stock' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'"
+                  >
+                    {{ item.status === 'out_of_stock' ? 'Out' : 'Low' }}
+                  </span>
+                </div>
+                <p class="mt-2 text-xs text-gray-600">{{ item.available_stock }} available</p>
+              </div>
+            </div>
+          </div>
+          </div>
 
           <!-- Quick Actions -->
           <button class="hidden md:flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors">
@@ -139,6 +176,20 @@
           </button>
         </div>
       </header>
+
+      <div v-if="stockAlerts.out_of_stock_count > 0" class="border-b border-red-200 bg-red-50 px-6 py-3">
+        <div class="flex flex-col gap-2 text-sm text-red-800 sm:flex-row sm:items-center sm:justify-between">
+          <div class="flex items-center gap-2">
+            <i class="mdi mdi-alert-circle-outline text-lg"></i>
+            <span>
+              {{ stockAlerts.out_of_stock_count }} product option{{ stockAlerts.out_of_stock_count === 1 ? '' : 's' }} out of stock. Restock now to keep storefront sales moving.
+            </span>
+          </div>
+          <router-link to="/admin/inventory" class="font-semibold text-red-900 hover:underline">
+            Open Inventory
+          </router-link>
+        </div>
+      </div>
 
       <!-- Page Content -->
       <main class="flex-1 overflow-y-auto p-6">
@@ -156,7 +207,8 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
+import axios from 'axios';
 import { useRoute, useRouter } from 'vue-router';
 import Badge from '../ui/Badge.vue';
 import { useAuthStore } from '../../stores/auth';
@@ -166,6 +218,12 @@ import { useSettingsStore } from '../../stores/settings';
 const router = useRouter();
 const route = useRoute();
 const sidebarOpen = ref(false);
+const showStockAlerts = ref(false);
+const stockAlerts = ref({
+  out_of_stock_count: 0,
+  low_stock_count: 0,
+  items: [],
+});
 const openGroups = reactive({});
 const authStore = useAuthStore();
 const cartStore = useCartStore();
@@ -176,11 +234,34 @@ const siteLogoUrl = computed(() => settingsStore.siteLogoUrl || '');
 const displayName = computed(() => authStore.user?.name || 'Admin User');
 const displayEmail = computed(() => authStore.user?.email || 'admin@example.com');
 const userInitial = computed(() => (displayName.value || 'A').trim().charAt(0) || 'A');
+const stockAlertItems = computed(() => stockAlerts.value.items || []);
+const totalStockAlerts = computed(() => Number(stockAlerts.value.out_of_stock_count || 0) + Number(stockAlerts.value.low_stock_count || 0));
 
 const handleLogout = async () => {
   await authStore.logout();
   cartStore.$reset();
   router.push('/admin/login');
+};
+
+const loadStockAlerts = async () => {
+  if (!authStore.isAdmin) {
+    return;
+  }
+
+  try {
+    const { data } = await axios.get('/api/admin/stock-alerts');
+    stockAlerts.value = {
+      out_of_stock_count: Number(data.out_of_stock_count || 0),
+      low_stock_count: Number(data.low_stock_count || 0),
+      items: data.items || [],
+    };
+  } catch (error) {
+    stockAlerts.value = {
+      out_of_stock_count: 0,
+      low_stock_count: 0,
+      items: [],
+    };
+  }
 };
 
 const navigation = [
@@ -272,5 +353,7 @@ watch(
   },
   { immediate: true }
 );
+
+onMounted(loadStockAlerts);
 </script>
 
