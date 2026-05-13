@@ -64,6 +64,10 @@ class PaymentService
             }
 
             if (in_array($lockedPayment->status, ['paid', 'completed', 'refunded'], true)) {
+                if (in_array($lockedPayment->status, ['paid', 'completed'], true)) {
+                    $this->syncPaidOrderReferralReward($lockedPayment->order);
+                }
+
                 return [
                     'status' => $lockedPayment->status === 'completed' ? 'paid' : $lockedPayment->status,
                     'reference' => $lockedPayment->transaction_id ?? $reference,
@@ -105,7 +109,7 @@ class PaymentService
                     'status' => 'processing',
                 ]);
 
-                app(ReferralService::class)->handleOrderEvent($order->fresh(), 'paid_order');
+                $this->syncPaidOrderReferralReward($order->fresh());
 
                 DB::afterCommit(fn () => app(OrderStatusEmailService::class)->notify($order->fresh(['user', 'items.sku.product']), [
                     ['type' => 'Payment status', 'old' => $oldPaymentStatus, 'new' => 'paid'],
@@ -130,6 +134,15 @@ class PaymentService
 
             return $result;
         });
+    }
+
+    protected function syncPaidOrderReferralReward(?Order $order): void
+    {
+        if (!$order) {
+            return;
+        }
+
+        app(ReferralService::class)->handleOrderEvent($order->fresh(), 'paid_order');
     }
 
     public function handleWebhook(string $provider, string $rawPayload, array $headers, array $payload): array

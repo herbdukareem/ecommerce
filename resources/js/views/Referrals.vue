@@ -73,7 +73,7 @@
             <tbody>
               <tr v-for="reward in store.rewards" :key="reward.id" class="border-b border-DEFAULT last:border-0">
                 <td class="py-3 pr-4 text-primary">{{ reward.order?.order_number || `#${reward.order_id}` }}</td>
-                <td class="py-3 pr-4 font-semibold text-primary">{{ formatCurrency(reward.reward_amount || 0) }}</td>
+                <td class="py-3 pr-4 font-semibold text-primary">{{ formatCurrency(reward.amount || 0) }}</td>
                 <td class="py-3 pr-4">
                   <span class="rounded-full px-2 py-1 text-xs font-semibold" :class="rewardStatusClass(reward.status)">
                     {{ reward.status || 'pending' }}
