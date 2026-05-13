@@ -284,17 +284,23 @@ class CatalogController extends Controller
         $product->setAttribute('basket_available_stock', $basketAvailableStock);
         $product->setAttribute('estimated_component_cost', $isBasket ? $this->basketProductService->estimatedComponentCost($product) : null);
         $product->setAttribute('is_in_stock', $isBasket ? $basketAvailableStock > 0 : $inStockSkus->isNotEmpty());
-        $product->setAttribute('basket_components', $isBasket ? $product->basketComponents->map(fn ($component) => [
+        $basketComponents = $isBasket ? $product->basketComponents->map(fn ($component) => [
             'id' => $component->id,
             'component_sku_id' => $component->component_sku_id,
-            'product_title' => $component->componentSku?->product?->title,
+            'product_title' => $component->componentSku?->product?->title
+                ?: $component->componentSku?->product?->name
+                ?: $component->componentSku?->display_label
+                ?: 'Included item',
             'sku_code' => $component->componentSku?->sku_code,
             'quantity' => (float) $component->quantity,
             'available_stock' => $this->basketProductService->availableSkuStock($component->componentSku),
             'unit_name' => $component->unit?->name ?: $component->componentSku?->unit,
             'sort_order' => $component->sort_order,
             'is_required' => (bool) $component->is_required,
-        ])->values() : []);
+        ])->values() : collect();
+
+        $product->setAttribute('basket_components', $basketComponents->values());
+        $product->unsetRelation('basketComponents');
 
         $product->setRelation('skus', $product->skus->map(function ($sku) use ($isBasket, $basketAvailableStock) {
             $availableStock = $isBasket

@@ -93,7 +93,10 @@ class CartController extends Controller
                     'basket_components' => $isBasket ? $sku->product->basketComponents->map(fn ($component) => [
                         'id' => $component->id,
                         'component_sku_id' => $component->component_sku_id,
-                        'product_title' => $component->componentSku?->product?->title,
+                        'product_title' => $component->componentSku?->product?->title
+                            ?: $component->componentSku?->product?->name
+                            ?: $component->componentSku?->display_label
+                            ?: 'Included item',
                         'sku_code' => $component->componentSku?->sku_code,
                         'quantity' => (float) $component->quantity,
                         'total_quantity' => (float) $component->quantity * (int) $item->quantity,

@@ -119,8 +119,8 @@
                 class="flex items-center justify-between gap-4 border-b border-DEFAULT pb-3 last:border-b-0 last:pb-0"
               >
                 <div>
-                  <p class="font-medium text-primary">{{ component.product_title }}</p>
-                  <p class="text-xs text-secondary">{{ component.sku_code }}</p>
+                  <p class="font-medium text-primary">{{ componentName(component) }}</p>
+                  <p v-if="componentSkuCode(component)" class="text-xs text-secondary">{{ componentSkuCode(component) }}</p>
                 </div>
                 <p class="text-sm font-semibold text-primary">
                   {{ component.quantity }} {{ component.unit_name || '' }}
@@ -167,6 +167,18 @@ const requiresOptionSelection = computed(() => {
 
 const isBasketProduct = computed(() => product.value?.product_type === 'basket');
 const basketComponents = computed(() => product.value?.basket_components || []);
+
+const componentName = (component) => {
+  return component?.product_title
+    || component?.component_sku?.product?.title
+    || component?.component_sku?.product?.name
+    || component?.component_sku?.display_label
+    || 'Included item';
+};
+
+const componentSkuCode = (component) => {
+  return component?.sku_code || component?.component_sku?.sku_code || '';
+};
 
 const displayPrice = computed(() => selectedSku.value?.price ?? product.value?.base_price ?? 0);
 const getSkuAvailableStock = (sku) => {
