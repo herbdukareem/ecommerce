@@ -305,6 +305,7 @@ const navigation = [
     label: 'Marketing',
     children: [
       { path: '/admin/newsletter-subscribers', icon: 'email-newsletter', label: 'Newsletter' },
+      { path: '/admin/referrals', icon: 'account-multiple-plus', label: 'Referrals' },
     ],
   },
   {

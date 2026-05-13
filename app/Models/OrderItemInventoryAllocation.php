@@ -11,6 +11,7 @@ class OrderItemInventoryAllocation extends Model
 
     protected $fillable = [
         'order_item_id',
+        'order_item_component_id',
         'inventory_batch_id',
         'quantity',
         'unit_cost',
@@ -25,6 +26,11 @@ class OrderItemInventoryAllocation extends Model
     public function orderItem()
     {
         return $this->belongsTo(OrderItem::class);
+    }
+
+    public function orderItemComponent()
+    {
+        return $this->belongsTo(OrderItemComponent::class);
     }
 
     public function inventoryBatch()

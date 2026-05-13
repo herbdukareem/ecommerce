@@ -37,4 +37,9 @@ class OrderItem extends Model
     {
         return $this->hasMany(OrderItemInventoryAllocation::class);
     }
+
+    public function components()
+    {
+        return $this->hasMany(OrderItemComponent::class);
+    }
 }

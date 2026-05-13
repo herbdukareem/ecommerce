@@ -49,6 +49,11 @@
             <input v-model="form.password_confirmation" type="password" class="w-full border border-DEFAULT rounded-lg px-3 py-2" :disabled="loading" minlength="8" required />
           </div>
 
+          <div>
+            <label class="block text-sm font-medium text-primary mb-1">Referral code</label>
+            <input v-model="form.referral_code" type="text" class="w-full border border-DEFAULT rounded-lg px-3 py-2 uppercase" :disabled="loading" />
+          </div>
+
           <p v-if="errorMessage" class="text-sm text-danger">{{ errorMessage }}</p>
 
           <Button type="submit" variant="primary" class="w-full" :loading="loading">
@@ -111,7 +116,7 @@
 
 <script setup>
 import { computed, nextTick, reactive, ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import MainLayout from '../components/layout/MainLayout.vue';
 import Card from '../components/ui/Card.vue';
 import Button from '../components/ui/Button.vue';
@@ -119,6 +124,7 @@ import { useAuthStore } from '../stores/auth';
 
 const authStore = useAuthStore();
 const router = useRouter();
+const route = useRoute();
 
 const loading = ref(false);
 const resending = ref(false);
@@ -133,7 +139,12 @@ const form = reactive({
   email: '',
   password: '',
   password_confirmation: '',
+  referral_code: '',
 });
+
+if (typeof route.query.ref === 'string') {
+  form.referral_code = route.query.ref;
+}
 
 const statusTone = computed(() => {
   if (errorMessage.value) return 'danger';

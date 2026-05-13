@@ -84,6 +84,13 @@
                   <i class="mdi mdi-package-variant"></i>
                   <span>My Orders</span>
                 </router-link>
+                <router-link
+                  to="/account/referrals"
+                  class="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  <i class="mdi mdi-account-multiple-plus"></i>
+                  <span>Referrals</span>
+                </router-link>
                 <div class="border-t border-gray-200 my-1"></div>
                 <button
                   @click="logout"

@@ -8,6 +8,7 @@ use App\Models\ProductImage;
 use App\Models\Sku;
 use App\Models\SkuImage;
 use App\Models\Category;
+use App\Services\BasketProductService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -15,6 +16,10 @@ use Illuminate\Support\Facades\Storage;
 
 class ProductController extends Controller
 {
+    public function __construct(private readonly BasketProductService $basketProductService)
+    {
+    }
+
     /**
      * Display a listing of products
      */
@@ -32,7 +37,7 @@ class ProductController extends Controller
             ->selectRaw('COUNT(*)');
 
         $query = Product::query()
-            ->with(['vendor', 'categories', 'skus.images', 'images'])
+            ->with(['vendor', 'categories', 'skus.images', 'images', 'basketComponents.componentSku.product', 'basketComponents.componentSku.stocks', 'basketComponents.unit'])
             ->select('products.*')
             ->selectSub($availableStockSubquery, 'available_stock')
             ->selectSub($activeSkuCountSubquery, 'active_sku_count');
@@ -72,7 +77,12 @@ class ProductController extends Controller
         $products = $query->paginate($request->get('per_page', 20));
 
         $products->getCollection()->transform(function (Product $product) {
-            $product->setAttribute('available_stock', max(0, (int) ($product->available_stock ?? 0)));
+            if ($product->isBasket()) {
+                $product->setAttribute('available_stock', $this->basketProductService->availableQuantity($product));
+                $product->setAttribute('estimated_component_cost', $this->basketProductService->estimatedComponentCost($product));
+            } else {
+                $product->setAttribute('available_stock', max(0, (int) ($product->available_stock ?? 0)));
+            }
             $product->setAttribute('active_sku_count', max(0, (int) ($product->active_sku_count ?? 0)));
             return $product;
         });
@@ -90,12 +100,14 @@ class ProductController extends Controller
             'description' => 'nullable|string',
             'price' => 'required|numeric|min:0',
             'status' => 'required|in:active,draft,archived',
+            'product_type' => 'sometimes|in:simple,variant,basket',
             'has_options' => 'sometimes|boolean',
             'category_id' => 'required|exists:categories,id',
             'sku' => 'nullable|string|max:100',
             'images' => 'nullable|array',
             'images.*' => 'image|max:10240', // 10MB max
             'variants' => 'nullable|string', // JSON string
+            'basket_components' => 'nullable',
         ]);
 
         $product = DB::transaction(function () use ($data, $request) {
@@ -103,6 +115,12 @@ class ProductController extends Controller
             $vendorId = $request->user()->id;
 
             // Create product
+            $productType = $data['product_type'] ?? ((bool) ($data['has_options'] ?? false) ? Product::TYPE_VARIANT : Product::TYPE_SIMPLE);
+            $hasOptions = $productType === Product::TYPE_VARIANT || (bool) ($data['has_options'] ?? false);
+            if ($productType === Product::TYPE_BASKET) {
+                $hasOptions = false;
+            }
+
             $product = Product::create([
                 'vendor_id' => $vendorId,
                 'title' => $data['name'], // Keep title for backward compatibility
@@ -112,7 +130,8 @@ class ProductController extends Controller
                 'base_price' => $data['price'], // Keep base_price for backward compatibility
                 'price' => $data['price'],
                 'status' => $data['status'],
-                'has_options' => (bool) ($data['has_options'] ?? false),
+                'has_options' => $hasOptions,
+                'product_type' => $productType,
             ]);
 
             // Attach category (single category)
@@ -146,7 +165,21 @@ class ProductController extends Controller
                 abort(422, 'At least one product option is required when has_options is enabled.');
             }
 
-            if (!empty($variants)) {
+            if ($product->isBasket()) {
+                Sku::create([
+                    'product_id' => $product->id,
+                    'sku_code' => $data['sku'] ?? 'BASKET-' . strtoupper(Str::random(8)),
+                    'option_label' => null,
+                    'price' => $data['price'],
+                    'stock_quantity' => 0,
+                    'sort_order' => 0,
+                    'active' => true,
+                    'created_by' => $request->user()->id,
+                    'updated_by' => $request->user()->id,
+                ]);
+
+                $this->basketProductService->syncComponents($product, $this->decodeBasketComponents($request->input('basket_components')));
+            } elseif (!empty($variants)) {
                 foreach ($variants as $index => $variant) {
                     $label = (string) ($variant['label'] ?? $variant['name'] ?? 'Option ' . ($index + 1));
                     $skuCode = (string) ($variant['sku'] ?? ('SKU-' . strtoupper(Str::random(8))));
@@ -188,7 +221,7 @@ class ProductController extends Controller
                 ]);
             }
 
-            return $product->load(['vendor', 'categories', 'skus.images']);
+            return $product->load(['vendor', 'categories', 'skus.images', 'basketComponents.componentSku.product', 'basketComponents.unit']);
         });
 
         return response()->json([
@@ -202,8 +235,13 @@ class ProductController extends Controller
      */
     public function show($id)
     {
-        $product = Product::with(['vendor', 'categories', 'skus.stocks', 'skus.images', 'reviews', 'images'])
+        $product = Product::with(['vendor', 'categories', 'skus.stocks', 'skus.images', 'reviews', 'images', 'basketComponents.componentSku.product', 'basketComponents.componentSku.stocks', 'basketComponents.unit'])
             ->findOrFail($id);
+
+        if ($product->isBasket()) {
+            $product->setAttribute('available_stock', $this->basketProductService->availableQuantity($product));
+            $product->setAttribute('estimated_component_cost', $this->basketProductService->estimatedComponentCost($product));
+        }
 
         return response()->json($product);
     }
@@ -220,12 +258,14 @@ class ProductController extends Controller
             'description' => 'nullable|string',
             'price' => 'sometimes|numeric|min:0',
             'status' => 'sometimes|in:active,draft,archived',
+            'product_type' => 'sometimes|in:simple,variant,basket',
             'has_options' => 'sometimes|boolean',
             'category_id' => 'sometimes|exists:categories,id',
             'sku' => 'nullable|string|max:100',
             'images' => 'nullable|array',
             'images.*' => 'image|max:10240',
             'variants' => 'nullable|string',
+            'basket_components' => 'nullable',
         ]);
 
         $product = DB::transaction(function () use ($product, $data, $request) {
@@ -247,6 +287,10 @@ class ProductController extends Controller
             }
             if (array_key_exists('has_options', $data)) {
                 $updateData['has_options'] = (bool) $data['has_options'];
+            }
+            if (isset($data['product_type'])) {
+                $updateData['product_type'] = $data['product_type'];
+                $updateData['has_options'] = $data['product_type'] === Product::TYPE_VARIANT;
             }
 
             $product->update($updateData);
@@ -304,7 +348,36 @@ class ProductController extends Controller
             }
 
             // Handle variants update
-            if ($request->filled('variants')) {
+            if ($product->fresh()->isBasket()) {
+                $parentSku = $product->skus()->where('active', true)->orderBy('id')->first();
+                if (!$parentSku) {
+                    Sku::create([
+                        'product_id' => $product->id,
+                        'sku_code' => $data['sku'] ?? 'BASKET-' . strtoupper(Str::random(8)),
+                        'option_label' => null,
+                        'price' => $data['price'] ?? $product->price,
+                        'stock_quantity' => 0,
+                        'sort_order' => 0,
+                        'active' => true,
+                        'created_by' => $request->user()->id,
+                        'updated_by' => $request->user()->id,
+                    ]);
+                } else {
+                    $parentSku->update([
+                        'sku_code' => $data['sku'] ?? $parentSku->sku_code,
+                        'price' => $data['price'] ?? $parentSku->price,
+                        'updated_by' => $request->user()->id,
+                    ]);
+                }
+
+                if ($request->has('basket_components')) {
+                    $this->basketProductService->syncComponents($product->fresh(), $this->decodeBasketComponents($request->input('basket_components')));
+                }
+            } else {
+                $product->basketComponents()->delete();
+            }
+
+            if (!$product->fresh()->isBasket() && $request->filled('variants')) {
                 $variants = $this->decodeVariants($data['variants']);
                 $this->assertUniqueVariantLabels($variants);
 
@@ -343,7 +416,7 @@ class ProductController extends Controller
                 }
             }
 
-            return $product->load(['vendor', 'categories', 'skus.images']);
+            return $product->load(['vendor', 'categories', 'skus.images', 'basketComponents.componentSku.product', 'basketComponents.unit']);
         });
 
         return response()->json([
@@ -395,6 +468,45 @@ class ProductController extends Controller
         return response()->json([
             'message' => 'Products updated successfully'
         ]);
+    }
+
+    public function skuSearch(Request $request)
+    {
+        $query = Sku::query()
+            ->with(['product:id,title,vendor_id,status', 'stocks:id,sku_id,on_hand,reserved'])
+            ->where('active', true)
+            ->whereHas('product', fn ($productQuery) => $productQuery->where('status', 'active'));
+
+        if ($request->filled('q')) {
+            $term = (string) $request->q;
+            $query->where(function ($q) use ($term) {
+                $q->where('sku_code', 'like', "%{$term}%")
+                    ->orWhere('option_label', 'like', "%{$term}%")
+                    ->orWhereHas('product', fn ($productQuery) => $productQuery->where('title', 'like', "%{$term}%"));
+            });
+        }
+
+        if ($request->filled('vendor_id')) {
+            $query->whereHas('product', fn ($productQuery) => $productQuery->where('vendor_id', $request->integer('vendor_id')));
+        }
+
+        $skus = $query->limit(50)->get()->map(function (Sku $sku) {
+            return [
+                'id' => $sku->id,
+                'sku_id' => $sku->id,
+                'sku_code' => $sku->sku_code,
+                'label' => trim(($sku->product?->title ?? 'Product') . ' - ' . $sku->display_label),
+                'product_id' => $sku->product_id,
+                'product_title' => $sku->product?->title,
+                'vendor_id' => $sku->product?->vendor_id,
+                'price' => (float) $sku->price,
+                'cost' => (float) ($sku->cost_price ?? $sku->cost ?? 0),
+                'unit' => $sku->unit,
+                'available_stock' => $sku->stocks->sum(fn ($stock) => max(0, (int) $stock->on_hand - (int) $stock->reserved)),
+            ];
+        })->values();
+
+        return response()->json(['skus' => $skus]);
     }
 
     public function uploadImages(Request $request, int $id)
@@ -605,6 +717,20 @@ class ProductController extends Controller
      * @return array<int,array<string,mixed>>
      */
     protected function decodeVariants($raw): array
+    {
+        if ($raw === null || $raw === '') {
+            return [];
+        }
+
+        if (is_array($raw)) {
+            return $raw;
+        }
+
+        $decoded = json_decode((string) $raw, true);
+        return is_array($decoded) ? $decoded : [];
+    }
+
+    protected function decodeBasketComponents($raw): array
     {
         if ($raw === null || $raw === '') {
             return [];

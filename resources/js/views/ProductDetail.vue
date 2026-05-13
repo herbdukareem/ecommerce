@@ -109,6 +109,25 @@
               {{ stockHintText }}
             </p>
           </Card>
+
+          <Card v-if="isBasketProduct && basketComponents.length" :elevation="1" class="p-5">
+            <h2 class="text-lg font-semibold text-primary mb-3">Included items</h2>
+            <div class="space-y-3">
+              <div
+                v-for="component in basketComponents"
+                :key="component.id || component.component_sku_id"
+                class="flex items-center justify-between gap-4 border-b border-DEFAULT pb-3 last:border-b-0 last:pb-0"
+              >
+                <div>
+                  <p class="font-medium text-primary">{{ component.product_title }}</p>
+                  <p class="text-xs text-secondary">{{ component.sku_code }}</p>
+                </div>
+                <p class="text-sm font-semibold text-primary">
+                  {{ component.quantity }} {{ component.unit_name || '' }}
+                </p>
+              </div>
+            </div>
+          </Card>
         </div>
       </div>
     </section>
@@ -142,8 +161,12 @@ const toast = inject('toast');
 
 const requiresOptionSelection = computed(() => {
   if (!product.value) return false;
+  if (isBasketProduct.value) return false;
   return Boolean(product.value.has_options || (product.value.skus?.length || 0) > 1);
 });
+
+const isBasketProduct = computed(() => product.value?.product_type === 'basket');
+const basketComponents = computed(() => product.value?.basket_components || []);
 
 const displayPrice = computed(() => selectedSku.value?.price ?? product.value?.base_price ?? 0);
 const getSkuAvailableStock = (sku) => {
@@ -183,6 +206,10 @@ const effectiveSku = computed(() => {
 });
 
 const maxAvailableStock = computed(() => {
+  if (isBasketProduct.value) {
+    return Math.max(0, Math.floor(Number(product.value?.basket_available_stock || 0)));
+  }
+
   const stock = getSkuAvailableStock(effectiveSku.value);
   if (stock === null || Number.isNaN(stock)) {
     return null;

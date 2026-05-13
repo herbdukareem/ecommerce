@@ -82,6 +82,9 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('/orders', [App\Http\Controllers\OrderController::class, 'index']);
         Route::get('/orders/{id}', [App\Http\Controllers\OrderController::class, 'show']);
         Route::post('/orders/{id}/cancel', [App\Http\Controllers\OrderController::class, 'cancel']);
+
+        Route::get('/referrals/me', [App\Http\Controllers\ReferralController::class, 'me']);
+        Route::get('/referrals/rewards', [App\Http\Controllers\ReferralController::class, 'rewards']);
     });
 
     Route::prefix('dispatch')->middleware('role:Dispatch Rider')->group(function () {
@@ -138,6 +141,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
         // Product Management
         Route::get('/products', [App\Http\Controllers\Admin\ProductController::class, 'index']);
         Route::post('/products', [App\Http\Controllers\Admin\ProductController::class, 'store']);
+        Route::get('/products/sku-search', [App\Http\Controllers\Admin\ProductController::class, 'skuSearch']);
         Route::get('/products/{id}', [App\Http\Controllers\Admin\ProductController::class, 'show']);
         Route::put('/products/{id}', [App\Http\Controllers\Admin\ProductController::class, 'update']);
         Route::delete('/products/{id}', [App\Http\Controllers\Admin\ProductController::class, 'destroy']);
@@ -194,6 +198,13 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::post('/newsletter-subscribers/send', [App\Http\Controllers\Admin\NewsletterSubscriberController::class, 'send']);
         Route::patch('/newsletter-subscribers/{subscriber}/status', [App\Http\Controllers\Admin\NewsletterSubscriberController::class, 'updateStatus']);
         Route::delete('/newsletter-subscribers/{subscriber}', [App\Http\Controllers\Admin\NewsletterSubscriberController::class, 'destroy']);
+
+        // Referrals
+        Route::get('/referrals', [App\Http\Controllers\Admin\ReferralController::class, 'index']);
+        Route::get('/referral-rewards', [App\Http\Controllers\Admin\ReferralController::class, 'rewards']);
+        Route::patch('/referral-rewards/{id}/status', [App\Http\Controllers\Admin\ReferralController::class, 'updateRewardStatus']);
+        Route::get('/referral-settings', [App\Http\Controllers\Admin\ReferralController::class, 'settings']);
+        Route::put('/referral-settings', [App\Http\Controllers\Admin\ReferralController::class, 'updateSettings']);
 
         // Payment Gateways Management
         Route::get('/payment-gateways', [App\Http\Controllers\Admin\PaymentGatewayController::class, 'index']);

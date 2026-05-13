@@ -22,18 +22,13 @@ class AdjustInventoryJob implements ShouldQueue
 
     public function handle(InventoryService $inventoryService): void
     {
-        $order = Order::with('items.sku')->find($this->orderId);
+        $order = Order::with('items.sku', 'items.components.componentSku')->find($this->orderId);
         if (!$order) {
             return;
         }
 
-        $items = $order->items->map(fn ($item) => [
-            'sku' => $item->sku,
-            'qty' => $item->quantity,
-        ])->toArray();
-
         if ($this->action === 'release') {
-            $inventoryService->release($items);
+            $inventoryService->releaseOrder($order);
             return;
         }
 

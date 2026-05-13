@@ -9,6 +9,7 @@ const Checkout = () => import('../views/Checkout.vue');
 const Login = () => import('../views/Login.vue');
 const Register = () => import('../views/Register.vue');
 const Account = () => import('../views/Account.vue');
+const Referrals = () => import('../views/Referrals.vue');
 const ForgotPassword = () => import('../views/ForgotPassword.vue');
 const Orders = () => import('../views/Orders.vue');
 const OrderDetail = () => import('../views/OrderDetail.vue');
@@ -45,6 +46,7 @@ const AdminExpiryAlerts = () => import('../views/admin/ExpiryAlerts.vue');
 const AdminProfitMargins = () => import('../views/admin/ProfitMargins.vue');
 const AdminRolesPermissions = () => import('../views/admin/RolesPermissions.vue');
 const AdminNewsletterSubscribers = () => import('../views/admin/NewsletterSubscribers.vue');
+const AdminReferrals = () => import('../views/admin/Referrals.vue');
 
 const routes = [
   // Public routes
@@ -57,6 +59,7 @@ const routes = [
   { path: '/register', name: 'Register', component: Register, meta: { guestOnly: true } },
   { path: '/forgot-password', name: 'ForgotPassword', component: ForgotPassword, meta: { guestOnly: true } },
   { path: '/account', name: 'Account', component: Account, meta: { requiresAuth: true } },
+  { path: '/account/referrals', name: 'Referrals', component: Referrals, meta: { requiresAuth: true } },
   { path: '/orders', name: 'Orders', component: Orders, meta: { requiresAuth: true } },
   { path: '/orders/:id', name: 'OrderDetail', component: OrderDetail, props: true, meta: { requiresAuth: true } },
   { path: '/addresses', name: 'Addresses', component: Addresses, meta: { requiresAuth: true } },
@@ -216,6 +219,12 @@ const routes = [
     path: '/admin/newsletter-subscribers',
     name: 'AdminNewsletterSubscribers',
     component: AdminNewsletterSubscribers,
+    meta: { requiresAdmin: true }
+  },
+  {
+    path: '/admin/referrals',
+    name: 'AdminReferrals',
+    component: AdminReferrals,
     meta: { requiresAdmin: true }
   },
 ];

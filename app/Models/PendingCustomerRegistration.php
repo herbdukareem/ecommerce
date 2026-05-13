@@ -15,6 +15,9 @@ class PendingCustomerRegistration extends Model
         'expires_at',
         'verified_at',
         'ip_address',
+        'referral_code',
+        'referral_code_id',
+        'referral_ip_address',
     ];
 
     protected $casts = [

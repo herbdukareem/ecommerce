@@ -14,6 +14,7 @@ use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Validation\Rules\Password as PasswordRule;
 use Spatie\Permission\Models\Role;
+use App\Services\ReferralService;
 
 class AuthController extends Controller
 {
@@ -26,9 +27,11 @@ class AuthController extends Controller
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users',
             'password' => ['required', 'confirmed', PasswordRule::min(8)],
+            'referral_code' => 'nullable|string|max:64',
         ]);
 
         $code = (string) random_int(100000, 999999);
+        $referralCode = app(ReferralService::class)->findActiveCode($data['referral_code'] ?? null);
 
         PendingCustomerRegistration::query()->updateOrCreate(
             ['email' => strtolower($data['email'])],
@@ -40,6 +43,9 @@ class AuthController extends Controller
                 'expires_at' => now()->addMinutes(15),
                 'verified_at' => null,
                 'ip_address' => $request->ip(),
+                'referral_code' => $referralCode?->code ?: ($data['referral_code'] ?? null),
+                'referral_code_id' => $referralCode?->id,
+                'referral_ip_address' => $request->ip(),
             ]
         );
 
@@ -98,6 +104,8 @@ class AuthController extends Controller
         if (method_exists($user, 'assignRole')) {
             $user->assignRole(Role::findOrCreate('Customer', 'sanctum'));
         }
+
+        app(ReferralService::class)->linkVerifiedUser($user, $pending->referral_code);
 
         $pending->delete();
 

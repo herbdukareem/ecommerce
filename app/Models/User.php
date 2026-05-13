@@ -106,6 +106,31 @@ class User extends Authenticatable
         return $this->hasOne(DispatchRider::class);
     }
 
+    public function referralCodes()
+    {
+        return $this->hasMany(ReferralCode::class);
+    }
+
+    public function referralsMade()
+    {
+        return $this->hasMany(Referral::class, 'referrer_id');
+    }
+
+    public function referralReceived()
+    {
+        return $this->hasOne(Referral::class, 'referred_user_id');
+    }
+
+    public function referralRewards()
+    {
+        return $this->hasMany(ReferralReward::class, 'referrer_id');
+    }
+
+    public function rewardWallet()
+    {
+        return $this->hasOne(RewardWallet::class);
+    }
+
     protected function getDefaultGuardName(): string
     {
         return $this->guard_name;

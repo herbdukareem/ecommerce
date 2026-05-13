@@ -6,6 +6,7 @@ use App\Models\InventoryBatch;
 use App\Models\InventoryLedgerEntry;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\OrderItemComponent;
 use App\Models\OrderItemInventoryAllocation;
 use App\Models\Product;
 use App\Models\Sku;
@@ -23,14 +24,14 @@ class InventoryService
     /**
      * Reserve quantities for an order. Uses DB transactions to avoid race conditions.
      *
-     * @param array<int,array{sku:Sku, qty:int}> $items
+     * @param array<int,array{sku:Sku, qty:int|float}> $items
      */
     public function reserve(array $items): bool
     {
         return DB::transaction(function () use ($items) {
             foreach ($items as $item) {
                 $sku = $item['sku'];
-                $qty = (int) $item['qty'];
+                $qty = (float) $item['qty'];
 
                 $stocks = $sku->stocks()->lockForUpdate()->orderByDesc('on_hand')->get();
                 $available = $stocks->sum(fn (Stock $stock) => max(0, $stock->on_hand - $stock->reserved));
@@ -64,14 +65,14 @@ class InventoryService
     /**
      * Release reserved quantities back to available stock.
      *
-     * @param array<int,array{sku:Sku, qty:int}> $items
+     * @param array<int,array{sku:Sku, qty:int|float}> $items
      */
     public function release(array $items): void
     {
         DB::transaction(function () use ($items) {
             foreach ($items as $item) {
                 $sku = $item['sku'];
-                $qty = (int) $item['qty'];
+                $qty = (float) $item['qty'];
 
                 $stocks = $sku->stocks()->lockForUpdate()->orderByDesc('reserved')->get();
                 $remaining = $qty;
@@ -97,14 +98,14 @@ class InventoryService
     /**
      * Commit reserved quantities to sold stock, then allocate sold units to inventory batches.
      *
-     * @param array<int,array{sku:Sku, qty:int}> $items
+     * @param array<int,array{sku:Sku, qty:int|float}> $items
      */
     public function commit(array $items): bool
     {
         return DB::transaction(function () use ($items) {
             foreach ($items as $item) {
                 $sku = $item['sku'];
-                $qty = (int) $item['qty'];
+                $qty = (float) $item['qty'];
 
                 $stocks = $sku->stocks()->lockForUpdate()->orderByDesc('reserved')->get();
                 $reserved = $stocks->sum('reserved');
@@ -137,7 +138,7 @@ class InventoryService
     public function commitOrder(Order $order, ?User $performedBy = null): bool
     {
         return DB::transaction(function () use ($order, $performedBy) {
-            $order->loadMissing('items.sku.product');
+            $order->loadMissing('items.sku.product', 'items.components.componentSku.product');
 
             if ($order->items->isEmpty()) {
                 return true;
@@ -153,17 +154,14 @@ class InventoryService
                 return true;
             }
 
-            $items = $order->items
-                ->filter(fn ($item) => $item->sku)
-                ->map(fn ($item) => [
-                    'sku' => $item->sku,
-                    'qty' => (int) $item->quantity,
-                ])
-                ->values()
-                ->all();
+            $items = $this->inventoryItemsForOrder($order);
 
             if (empty($items)) {
-                return false;
+                $hasCommittedBasketComponents = $order->items
+                    ->flatMap(fn (OrderItem $item) => $item->components)
+                    ->contains(fn (OrderItemComponent $component) => (bool) $component->inventory_committed);
+
+                return $hasCommittedBasketComponents;
             }
 
             if (!$this->commit($items)) {
@@ -176,12 +174,100 @@ class InventoryService
         }, 3);
     }
 
+    public function releaseOrder(Order $order): void
+    {
+        DB::transaction(function () use ($order) {
+            $order->loadMissing('items.sku', 'items.components.componentSku');
+
+            $items = $this->inventoryItemsForOrder($order, onlyReservedComponents: true);
+
+            if (!empty($items)) {
+                $this->release($items);
+            }
+
+            $order->items
+                ->flatMap(fn (OrderItem $item) => $item->components)
+                ->filter(fn (OrderItemComponent $component) => $component->inventory_reserved && !$component->inventory_released && !$component->inventory_committed)
+                ->each(fn (OrderItemComponent $component) => $component->update([
+                    'inventory_released' => true,
+                    'released_at' => now(),
+                ]));
+        }, 3);
+    }
+
+    public function markBasketComponentsReserved(Order $order): void
+    {
+        $order->loadMissing('items.components');
+
+        foreach ($order->items as $item) {
+            foreach ($item->components as $component) {
+                if (!$component->inventory_reserved) {
+                    $component->update([
+                        'inventory_reserved' => true,
+                        'reserved_at' => now(),
+                    ]);
+                }
+            }
+        }
+    }
+
+    /**
+     * @return array<int,array{sku:Sku, qty:float}>
+     */
+    protected function inventoryItemsForOrder(Order $order, bool $onlyReservedComponents = false): array
+    {
+        $components = $order->items
+            ->flatMap(fn (OrderItem $item) => $item->components)
+            ->filter(fn (OrderItemComponent $component) => $component->componentSku);
+
+        if ($components->isNotEmpty()) {
+            return $components
+                ->filter(function (OrderItemComponent $component) use ($onlyReservedComponents) {
+                    if ($component->inventory_committed || $component->inventory_released) {
+                        return false;
+                    }
+
+                    return !$onlyReservedComponents || $component->inventory_reserved;
+                })
+                ->map(fn (OrderItemComponent $component) => [
+                    'sku' => $component->componentSku,
+                    'qty' => (float) ($component->base_quantity ?: $component->total_quantity),
+                ])
+                ->values()
+                ->all();
+        }
+
+        return $order->items
+            ->filter(fn ($item) => $item->sku)
+                ->map(fn ($item) => [
+                    'sku' => $item->sku,
+                'qty' => (float) $item->quantity,
+                ])
+                ->values()
+                ->all();
+    }
+
     public function commitOrderInventory(Order $order, ?User $performedBy = null): void
     {
         DB::transaction(function () use ($order, $performedBy) {
-            $order->loadMissing('items.sku.product');
+            $order->loadMissing('items.sku.product', 'items.components.componentSku.product');
 
             foreach ($order->items as $item) {
+                if ($item->components->isNotEmpty()) {
+                    foreach ($item->components as $component) {
+                        if ($component->inventory_committed) {
+                            continue;
+                        }
+
+                        $this->allocateOrderItemFromBatches($item, $performedBy, $order, $component);
+                        $component->update([
+                            'inventory_committed' => true,
+                            'committed_at' => now(),
+                        ]);
+                    }
+                    continue;
+                }
+
                 $this->allocateOrderItemFromBatches($item, $performedBy, $order);
             }
         }, 3);
@@ -280,16 +366,16 @@ class InventoryService
         }, 3);
     }
 
-    protected function allocateOrderItemFromBatches(OrderItem $orderItem, ?User $performedBy, ?Order $order = null): void
+    protected function allocateOrderItemFromBatches(OrderItem $orderItem, ?User $performedBy, ?Order $order = null, ?OrderItemComponent $component = null): void
     {
-        $sku = $orderItem->sku;
+        $sku = $component?->componentSku ?: $orderItem->sku;
         if (!$sku) {
             return;
         }
 
         $order = $order ?: $orderItem->order;
 
-        $required = (int) $orderItem->quantity;
+        $required = (float) ($component?->base_quantity ?: $component?->total_quantity ?: $orderItem->quantity);
         $batches = InventoryBatch::query()
             ->where('variant_id', $sku->id)
             ->where('quantity_remaining', '>', 0)
@@ -321,6 +407,7 @@ class InventoryService
 
             OrderItemInventoryAllocation::create([
                 'order_item_id' => $orderItem->id,
+                'order_item_component_id' => $component?->id,
                 'inventory_batch_id' => $batch->id,
                 'quantity' => $take,
                 'unit_cost' => (float) $batch->cost_price,
@@ -341,9 +428,11 @@ class InventoryService
                 'balance_after' => (int) $balanceAfter,
                 'cost_price' => $batch->cost_price,
                 'selling_price' => $orderItem->price_snapshot,
-                'reference_type' => 'order',
-                'reference_id' => $order?->id,
-                'note' => 'Order item #' . $orderItem->id . ' deducted from batch #' . $batch->id,
+                'reference_type' => $component ? 'order_item_component' : 'order',
+                'reference_id' => $component?->id ?: $order?->id,
+                'note' => $component
+                    ? 'Basket order item #' . $orderItem->id . ' component #' . $component->id . ' deducted from batch #' . $batch->id
+                    : 'Order item #' . $orderItem->id . ' deducted from batch #' . $batch->id,
                 'performed_by' => $performedBy?->id,
             ]);
 
@@ -364,9 +453,11 @@ class InventoryService
                 'balance_after' => $balanceAfter,
                 'cost_price' => null,
                 'selling_price' => $orderItem->price_snapshot,
-                'reference_type' => 'order',
-                'reference_id' => $order?->id,
-                'note' => 'Order item #' . $orderItem->id . ' deducted without batch allocation.',
+                'reference_type' => $component ? 'order_item_component' : 'order',
+                'reference_id' => $component?->id ?: $order?->id,
+                'note' => $component
+                    ? 'Basket order item #' . $orderItem->id . ' component #' . $component->id . ' deducted without batch allocation.'
+                    : 'Order item #' . $orderItem->id . ' deducted without batch allocation.',
                 'performed_by' => $performedBy?->id,
             ]);
 
@@ -377,11 +468,27 @@ class InventoryService
         $unitCost = $allocatedQty > 0 ? ($allocatedCost / $allocatedQty) : null;
         $unitPrice = (float) $orderItem->price_snapshot;
 
+        if ($component) {
+            $component->update([
+                'unit_cost_at_sale' => $unitCost,
+                'total_cost_at_sale' => $allocatedCost,
+            ]);
+
+            $basketCost = (float) $orderItem->components()->sum('total_cost_at_sale');
+            $orderItem->update([
+                'unit_cost_at_sale' => $orderItem->quantity > 0 ? ($basketCost / (float) $orderItem->quantity) : null,
+                'total_cost_at_sale' => $basketCost,
+                'unit_price_at_sale' => $unitPrice,
+                'total_price_at_sale' => $unitPrice * (float) $orderItem->quantity,
+            ]);
+            return;
+        }
+
         $orderItem->update([
             'unit_cost_at_sale' => $unitCost,
             'total_cost_at_sale' => $allocatedCost,
             'unit_price_at_sale' => $unitPrice,
-            'total_price_at_sale' => $unitPrice * (int) $orderItem->quantity,
+            'total_price_at_sale' => $unitPrice * (float) $orderItem->quantity,
         ]);
     }
 

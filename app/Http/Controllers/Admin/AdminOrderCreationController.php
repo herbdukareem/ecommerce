@@ -6,12 +6,16 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\AdminCreateOrderRequest;
 use App\Models\Sku;
 use App\Models\User;
+use App\Services\BasketProductService;
 use App\Services\OrderPlacementService;
 use Illuminate\Http\Request;
 
 class AdminOrderCreationController extends Controller
 {
-    public function __construct(private readonly OrderPlacementService $orderPlacementService)
+    public function __construct(
+        private readonly OrderPlacementService $orderPlacementService,
+        private readonly BasketProductService $basketProductService
+    )
     {
     }
 
@@ -37,7 +41,7 @@ class AdminOrderCreationController extends Controller
     public function products(Request $request)
     {
         $query = Sku::query()
-            ->with(['product:id,title,image', 'stocks:id,sku_id,on_hand,reserved'])
+            ->with(['product:id,title,image,product_type', 'product.basketComponents.componentSku.stocks', 'product.basketComponents.unit', 'stocks:id,sku_id,on_hand,reserved'])
             ->where('active', true)
             ->whereHas('product', function ($productQuery) {
                 $productQuery->where('status', 'active');
@@ -51,12 +55,15 @@ class AdminOrderCreationController extends Controller
         }
 
         $skus = $query->limit(100)->get()->map(function (Sku $sku) {
-            $available = $sku->stocks->sum(fn ($stock) => max(0, (int) $stock->on_hand - (int) $stock->reserved));
+            $available = $this->basketProductService->isBasketProduct($sku->product)
+                ? $this->basketProductService->availableQuantity($sku->product)
+                : $sku->stocks->sum(fn ($stock) => max(0, (int) $stock->on_hand - (int) $stock->reserved));
             return [
                 'sku_id' => $sku->id,
                 'sku_code' => $sku->sku_code,
                 'price' => (float) $sku->price,
                 'product_id' => $sku->product_id,
+                'product_type' => $sku->product?->product_type,
                 'product_title' => $sku->product?->title,
                 'product_image' => $sku->product?->image,
                 'available_stock' => $available,

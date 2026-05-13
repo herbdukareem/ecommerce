@@ -11,12 +11,16 @@ class Product extends Model
 
     protected $fillable = [
         'vendor_id', 'title', 'slug', 'description', 'base_price', 'status',
-        'name', 'price', 'image', 'has_options', // New fields for admin product management
+        'name', 'price', 'image', 'has_options', 'product_type', // New fields for admin product management
     ];
 
     protected $casts = [
         'has_options' => 'boolean',
     ];
+
+    public const TYPE_SIMPLE = 'simple';
+    public const TYPE_VARIANT = 'variant';
+    public const TYPE_BASKET = 'basket';
 
     /**
      * A product belongs to a vendor (User).
@@ -43,6 +47,28 @@ class Product extends Model
             ->where('active', true)
             ->orderBy('sort_order')
             ->orderBy('id');
+    }
+
+    public function basketComponents()
+    {
+        return $this->hasMany(BasketComponent::class, 'basket_product_id')
+            ->orderBy('sort_order')
+            ->orderBy('id');
+    }
+
+    public function basketParentSku()
+    {
+        return $this->hasOne(Sku::class)->where('active', true)->oldestOfMany();
+    }
+
+    public function isBasket(): bool
+    {
+        return $this->product_type === self::TYPE_BASKET;
+    }
+
+    public function isVariantProduct(): bool
+    {
+        return $this->product_type === self::TYPE_VARIANT || (bool) $this->has_options;
     }
 
     /**

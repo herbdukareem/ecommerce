@@ -8,19 +8,24 @@ use App\Models\Attribute;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
+use App\Services\BasketProductService;
 
 /**
  * Handle public catalog queries and Reach Filter.
  */
 class CatalogController extends Controller
 {
+    public function __construct(private readonly BasketProductService $basketProductService)
+    {
+    }
+
     /**
      * List products with advanced filters and facets.
      */
     public function index(Request $request)
     {
         $query = Product::query()
-            ->with(['skus.stocks', 'skus.images', 'categories', 'images'])
+            ->with(['skus.stocks', 'skus.images', 'categories', 'images', 'basketComponents.componentSku.product', 'basketComponents.componentSku.stocks', 'basketComponents.unit'])
             ->withCount(['reviews as review_count' => function ($q) {
                 $q->where('is_approved', true);
             }])
@@ -151,6 +156,9 @@ class CatalogController extends Controller
                 'attributes.values',
                 'categories',
                 'images',
+                'basketComponents.componentSku.product',
+                'basketComponents.componentSku.stocks',
+                'basketComponents.unit',
                 'vendor'
             ])
             ->firstOrFail();
@@ -248,6 +256,8 @@ class CatalogController extends Controller
             return (bool) ($sku->active ?? true);
         })->sortBy('sort_order')->values();
 
+        $isBasket = $this->basketProductService->isBasketProduct($product);
+
         $inStockSkus = $activeSkus->filter(function ($sku) {
             $stockFromWarehouses = $sku->stocks->sum(function ($stock) {
                 return (int) $stock->on_hand - (int) $stock->reserved;
@@ -260,7 +270,10 @@ class CatalogController extends Controller
         $maxOptionPrice = $activeSkus->max('price');
         $hasOptions = (bool) ($product->has_options ?? false);
 
-        $product->setAttribute('default_sku_id', $hasOptions ? null : optional($inStockSkus->first())->id);
+        $basketAvailableStock = $isBasket ? $this->basketProductService->availableQuantity($product) : null;
+
+        $product->setAttribute('product_type', $product->product_type ?? Product::TYPE_SIMPLE);
+        $product->setAttribute('default_sku_id', $hasOptions ? null : optional($activeSkus->first())->id);
         $product->setAttribute('has_variants', $hasOptions);
         $product->setAttribute('has_options', $hasOptions);
         $product->setAttribute('requires_option_selection', $hasOptions);
@@ -268,12 +281,27 @@ class CatalogController extends Controller
         $product->setAttribute('min_option_price', $minOptionPrice !== null ? (float) $minOptionPrice : null);
         $product->setAttribute('max_option_price', $maxOptionPrice !== null ? (float) $maxOptionPrice : null);
         $product->setAttribute('display_price', $hasOptions ? ($minOptionPrice ?? $product->base_price) : $product->base_price);
-        $product->setAttribute('is_in_stock', $inStockSkus->isNotEmpty());
+        $product->setAttribute('basket_available_stock', $basketAvailableStock);
+        $product->setAttribute('estimated_component_cost', $isBasket ? $this->basketProductService->estimatedComponentCost($product) : null);
+        $product->setAttribute('is_in_stock', $isBasket ? $basketAvailableStock > 0 : $inStockSkus->isNotEmpty());
+        $product->setAttribute('basket_components', $isBasket ? $product->basketComponents->map(fn ($component) => [
+            'id' => $component->id,
+            'component_sku_id' => $component->component_sku_id,
+            'product_title' => $component->componentSku?->product?->title,
+            'sku_code' => $component->componentSku?->sku_code,
+            'quantity' => (float) $component->quantity,
+            'available_stock' => $this->basketProductService->availableSkuStock($component->componentSku),
+            'unit_name' => $component->unit?->name ?: $component->componentSku?->unit,
+            'sort_order' => $component->sort_order,
+            'is_required' => (bool) $component->is_required,
+        ])->values() : []);
 
-        $product->setRelation('skus', $product->skus->map(function ($sku) {
-            $availableStock = $sku->stocks->sum(function ($stock) {
-                return (int) $stock->on_hand - (int) $stock->reserved;
-            });
+        $product->setRelation('skus', $product->skus->map(function ($sku) use ($isBasket, $basketAvailableStock) {
+            $availableStock = $isBasket
+                ? $basketAvailableStock
+                : $sku->stocks->sum(function ($stock) {
+                    return (int) $stock->on_hand - (int) $stock->reserved;
+                });
 
             $sku->setAttribute('label', $sku->display_label);
             $sku->setAttribute('available_stock', max(0, (int) $availableStock));

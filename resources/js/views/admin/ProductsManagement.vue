@@ -270,6 +270,19 @@
                 </div>
 
                 <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Product Type</label>
+                  <select
+                    v-model="productForm.product_type"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                    @change="handleProductTypeChange"
+                  >
+                    <option value="simple">Simple</option>
+                    <option value="variant">Variant</option>
+                    <option value="basket">Basket / Combo</option>
+                  </select>
+                </div>
+
+                <div>
                   <label class="block text-sm font-medium text-gray-700 mb-1">Base Price *</label>
                   <input
                     v-model.number="productForm.price"
@@ -291,7 +304,7 @@
                   />
                 </div>
 
-                <div class="md:col-span-2">
+                <div v-if="productForm.product_type !== 'basket'" class="md:col-span-2">
                   <label class="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
                     <input v-model="productForm.has_options" type="checkbox" class="rounded border-gray-300" />
                     Enable product options (variants)
@@ -340,6 +353,113 @@
                     >
                       <i class="mdi mdi-close text-sm"></i>
                     </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Basket Components -->
+            <div v-if="productForm.product_type === 'basket'" class="space-y-4">
+              <div class="flex items-center justify-between">
+                <div>
+                  <h3 class="text-lg font-semibold text-gray-900">Basket Components</h3>
+                  <p class="text-sm text-gray-500">Select existing SKUs from the same vendor. Stock is computed from these items.</p>
+                </div>
+                <div class="text-right text-xs text-gray-500">
+                  <div>Available: <span class="font-semibold text-gray-900">{{ basketAvailability }}</span></div>
+                  <div>Est. cost: <span class="font-semibold text-gray-900">{{ formatCurrency(estimatedBasketCost) }}</span></div>
+                </div>
+              </div>
+
+              <div class="rounded-lg border border-gray-200 p-4">
+                <div class="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3">
+                  <input
+                    v-model="basketSkuSearch"
+                    type="text"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500"
+                    placeholder="Search product, option, or SKU"
+                    @input="searchBasketSkus"
+                  />
+                  <button
+                    type="button"
+                    class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                    @click="searchBasketSkus"
+                  >
+                    Search
+                  </button>
+                </div>
+
+                <div v-if="basketSkuResults.length" class="mt-3 max-h-48 overflow-y-auto divide-y divide-gray-100 border border-gray-100 rounded-lg">
+                  <button
+                    v-for="sku in basketSkuResults"
+                    :key="sku.id"
+                    type="button"
+                    class="w-full text-left px-3 py-2 hover:bg-orange-50"
+                    @click="addBasketComponent(sku)"
+                  >
+                    <div class="text-sm font-medium text-gray-900">{{ sku.label }}</div>
+                    <div class="text-xs text-gray-500">
+                      Stock {{ sku.available_stock }} | Cost {{ formatCurrency(sku.cost || 0) }}
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              <div v-if="productForm.basket_components.length === 0" class="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
+                Add at least one component SKU to create a basket product.
+              </div>
+
+              <div v-else class="space-y-3">
+                <div
+                  v-for="(component, index) in productForm.basket_components"
+                  :key="component.component_sku_id"
+                  class="border border-gray-200 rounded-lg p-4"
+                >
+                  <div class="flex items-start justify-between gap-3">
+                    <div>
+                      <p class="font-medium text-gray-900">{{ component.product_title }}</p>
+                      <p class="text-xs text-gray-500">{{ component.sku_code }} | Available {{ component.available_stock }}</p>
+                    </div>
+                    <button type="button" class="text-red-600 hover:text-red-700" @click="removeBasketComponent(index)">
+                      <i class="mdi mdi-delete"></i>
+                    </button>
+                  </div>
+
+                  <div class="mt-3 grid grid-cols-1 md:grid-cols-4 gap-3">
+                    <div>
+                      <label class="block text-xs font-medium text-gray-700 mb-1">Quantity</label>
+                      <input
+                        v-model.number="component.quantity"
+                        type="number"
+                        min="0.0001"
+                        step="0.0001"
+                        class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-xs font-medium text-gray-700 mb-1">Unit</label>
+                      <input
+                        v-model="component.unit_name"
+                        type="text"
+                        disabled
+                        class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50"
+                        placeholder="Default"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-xs font-medium text-gray-700 mb-1">Sort Order</label>
+                      <input
+                        v-model.number="component.sort_order"
+                        type="number"
+                        class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500"
+                      />
+                    </div>
+                    <div class="flex items-center">
+                      <label class="inline-flex items-center gap-2 text-xs font-medium text-gray-700">
+                        <input v-model="component.is_required" type="checkbox" class="rounded border-gray-300" />
+                        Required
+                      </label>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -551,6 +671,8 @@ const loading = ref(false);
 const showCreateModal = ref(false);
 const showEditModal = ref(false);
 const saving = ref(false);
+const basketSkuSearch = ref('');
+const basketSkuResults = ref([]);
 
 const productForm = ref({
   id: null,
@@ -558,11 +680,13 @@ const productForm = ref({
   description: '',
   category_id: '',
   status: 'active',
+  product_type: 'simple',
   has_options: false,
   price: 0,
   sku: '',
   images: [],
   variants: [],
+  basket_components: [],
 });
 
 const filters = ref({
@@ -656,12 +780,22 @@ const resetForm = () => {
     description: '',
     category_id: '',
     status: 'active',
+    product_type: 'simple',
     has_options: false,
     price: 0,
     sku: '',
     images: [],
     variants: [],
+    basket_components: [],
   };
+};
+
+const handleProductTypeChange = () => {
+  productForm.value.has_options = productForm.value.product_type === 'variant';
+  if (productForm.value.product_type === 'basket') {
+    productForm.value.has_options = false;
+    productForm.value.variants = [];
+  }
 };
 
 // Image upload
@@ -704,6 +838,47 @@ const addVariant = () => {
 
 const removeVariant = (index) => {
   productForm.value.variants.splice(index, 1);
+};
+
+let skuSearchTimeout;
+const searchBasketSkus = () => {
+  clearTimeout(skuSearchTimeout);
+  skuSearchTimeout = setTimeout(fetchBasketSkuResults, 300);
+};
+
+const fetchBasketSkuResults = async () => {
+  try {
+    const { data } = await axios.get('/api/admin/products/sku-search', {
+      params: {
+        q: basketSkuSearch.value,
+        vendor_id: selectedBasketVendorId.value || undefined,
+      },
+    });
+    const existingIds = new Set(productForm.value.basket_components.map((component) => Number(component.component_sku_id)));
+    basketSkuResults.value = (data.skus || []).filter((sku) => !existingIds.has(Number(sku.id)));
+  } catch (error) {
+    console.error('Failed to search SKUs:', error);
+  }
+};
+
+const addBasketComponent = (sku) => {
+  productForm.value.basket_components.push({
+    component_sku_id: sku.id,
+    product_title: sku.product_title,
+    sku_code: sku.sku_code,
+    quantity: 1,
+    sort_order: productForm.value.basket_components.length,
+    is_required: true,
+    unit_id: null,
+    unit_name: sku.unit || '',
+    available_stock: Number(sku.available_stock || 0),
+    cost: Number(sku.cost || 0),
+  });
+  basketSkuResults.value = basketSkuResults.value.filter((entry) => Number(entry.id) !== Number(sku.id));
+};
+
+const removeBasketComponent = (index) => {
+  productForm.value.basket_components.splice(index, 1);
 };
 
 const handleVariantImageUpload = async (variantIndex, event) => {
@@ -801,6 +976,7 @@ const saveProduct = async () => {
     formData.append('description', productForm.value.description || '');
     formData.append('category_id', productForm.value.category_id);
     formData.append('status', productForm.value.status);
+    formData.append('product_type', productForm.value.product_type || 'simple');
     formData.append('has_options', productForm.value.has_options ? '1' : '0');
     formData.append('price', productForm.value.price);
     formData.append('sku', productForm.value.sku || '');
@@ -838,6 +1014,16 @@ const saveProduct = async () => {
       formData.append('variants', JSON.stringify(productForm.value.variants));
     }
 
+    if (productForm.value.product_type === 'basket') {
+      formData.append('basket_components', JSON.stringify(productForm.value.basket_components.map((component, index) => ({
+        component_sku_id: component.component_sku_id,
+        unit_id: component.unit_id || null,
+        quantity: Number(component.quantity || 0),
+        sort_order: Number(component.sort_order ?? index),
+        is_required: component.is_required !== false,
+      }))));
+    }
+
     if (showEditModal.value) {
       await axios.post(`/api/admin/products/${productForm.value.id}?_method=PUT`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -872,6 +1058,7 @@ const editProduct = (product) => {
     description: product.description || '',
     category_id: product.categories?.[0]?.id || product.category_id || '',
     status: product.status,
+    product_type: product.product_type || (product.has_options ? 'variant' : 'simple'),
     has_options: !!product.has_options,
     price: product.price || product.base_price,
     sku: product.skus?.[0]?.sku_code || product.sku || '',
@@ -890,6 +1077,19 @@ const editProduct = (product) => {
       is_active: sku.active !== false,
       images: sortVariantImages(sku.images || []),
       existing: true
+    })) : [],
+    basket_components: product.basket_components ? product.basket_components.map((component, index) => ({
+      id: component.id,
+      component_sku_id: component.component_sku_id,
+      product_title: component.component_sku?.product?.title || component.product_title || 'Component',
+      sku_code: component.component_sku?.sku_code || component.sku_code || '',
+      quantity: Number(component.quantity || 1),
+      sort_order: Number(component.sort_order ?? index),
+      is_required: component.is_required !== false,
+      unit_id: component.unit_id || null,
+      unit_name: component.unit?.name || component.component_sku?.unit || '',
+      available_stock: Number(component.component_sku?.available_stock || 0),
+      cost: Number(component.component_sku?.cost_price || component.component_sku?.cost || 0),
     })) : [],
   };
   showEditModal.value = true;
@@ -949,6 +1149,34 @@ const stockTextClass = (product) => {
   }
   return 'text-green-700';
 };
+
+const selectedBasketVendorId = computed(() => {
+  const current = products.value.find((product) => Number(product.id) === Number(productForm.value.id));
+  return current?.vendor_id || current?.vendor?.id || null;
+});
+
+const basketAvailability = computed(() => {
+  const requiredComponents = productForm.value.basket_components.filter((component) => component.is_required !== false);
+  if (!requiredComponents.length) {
+    return 0;
+  }
+
+  const available = Math.min(...requiredComponents.map((component) => {
+    const quantity = Number(component.quantity || 0);
+    if (quantity <= 0) {
+      return 0;
+    }
+    return Math.floor((Number(component.available_stock || 0) / quantity) * 10000) / 10000;
+  }));
+
+  return Number.isFinite(available) ? available : 0;
+});
+
+const estimatedBasketCost = computed(() => {
+  return productForm.value.basket_components.reduce((sum, component) => {
+    return sum + Number(component.cost || 0) * Number(component.quantity || 0);
+  }, 0);
+});
 
 // Initialize
 onMounted(() => {

@@ -16,13 +16,18 @@ use Illuminate\Validation\ValidationException;
 
 class OrderPlacementService
 {
-    public function __construct(private readonly InventoryService $inventoryService)
+    public function __construct(
+        private readonly InventoryService $inventoryService,
+        private readonly BasketProductService $basketProductService
+    )
     {
     }
 
     public function placeCustomerCartOrder(User $customer, array $payload): Order
     {
-        $cart = Cart::with(['items.sku.product', 'coupon'])->where('user_id', $customer->id)->first();
+        $cart = Cart::with(['items.sku.product.basketComponents.componentSku.stocks', 'items.sku.product.basketComponents.unit', 'coupon'])
+            ->where('user_id', $customer->id)
+            ->first();
         if (!$cart || $cart->items->isEmpty()) {
             throw ValidationException::withMessages([
                 'cart' => ['Cart is empty.'],
@@ -34,10 +39,17 @@ class OrderPlacementService
         $slot = DispatchTimeSlot::query()->findOrFail($payload['dispatch_time_slot_id']);
 
         return DB::transaction(function () use ($customer, $payload, $cart, $city, $area, $slot) {
-            $inventoryItems = $cart->items->map(fn ($item) => [
-                'sku' => $item->sku,
-                'qty' => (int) $item->quantity,
-            ])->toArray();
+            $inventoryItems = $cart->items->flatMap(function ($item) {
+                $product = $item->sku?->product;
+                if ($this->basketProductService->isBasketProduct($product)) {
+                    return $this->basketProductService->componentRequirements($product, (float) $item->quantity);
+                }
+
+                return [[
+                    'sku' => $item->sku,
+                    'qty' => (float) $item->quantity,
+                ]];
+            })->toArray();
 
             if (!$this->inventoryService->reserve($inventoryItems)) {
                 throw ValidationException::withMessages([
@@ -83,7 +95,7 @@ class OrderPlacementService
             ]);
 
             foreach ($cart->items as $cartItem) {
-                OrderItem::create([
+                $orderItem = OrderItem::create([
                     'order_id' => $order->id,
                     'sku_id' => $cartItem->sku_id,
                     'product_option_id' => $cartItem->sku_id,
@@ -98,7 +110,14 @@ class OrderPlacementService
                     'width_snapshot' => (float) ($cartItem->sku->width ?? 0),
                     'height_snapshot' => (float) ($cartItem->sku->height ?? 0),
                 ]);
+
+                $product = $cartItem->sku?->product;
+                if ($this->basketProductService->isBasketProduct($product)) {
+                    $this->basketProductService->createOrderItemComponents($orderItem, $product, (float) $cartItem->quantity);
+                }
             }
+
+            $this->inventoryService->markBasketComponentsReserved($order->fresh('items.components'));
 
             Payment::create([
                 'order_id' => $order->id,
@@ -128,7 +147,7 @@ class OrderPlacementService
         $slot = DispatchTimeSlot::query()->findOrFail($payload['dispatch_time_slot_id']);
 
         $skus = Sku::query()
-            ->with(['stocks', 'product'])
+            ->with(['stocks', 'product.basketComponents.componentSku.stocks', 'product.basketComponents.unit'])
             ->whereIn('id', collect($payload['items'])->pluck('sku_id')->unique()->values())
             ->get()
             ->keyBy('id');
@@ -146,7 +165,11 @@ class OrderPlacementService
                 }
 
                 $qty = (int) $line['quantity'];
-                $inventoryItems[] = ['sku' => $sku, 'qty' => $qty];
+                if ($this->basketProductService->isBasketProduct($sku->product)) {
+                    array_push($inventoryItems, ...$this->basketProductService->componentRequirements($sku->product, (float) $qty));
+                } else {
+                    $inventoryItems[] = ['sku' => $sku, 'qty' => (float) $qty];
+                }
                 $subtotal += ((float) $sku->price * $qty);
             }
 
@@ -189,7 +212,7 @@ class OrderPlacementService
             foreach ($payload['items'] as $line) {
                 $sku = $skus->get((int) $line['sku_id']);
 
-                OrderItem::create([
+                $orderItem = OrderItem::create([
                     'order_id' => $order->id,
                     'sku_id' => $sku->id,
                     'product_option_id' => $sku->id,
@@ -204,7 +227,13 @@ class OrderPlacementService
                     'width_snapshot' => (float) ($sku->width ?? 0),
                     'height_snapshot' => (float) ($sku->height ?? 0),
                 ]);
+
+                if ($this->basketProductService->isBasketProduct($sku->product)) {
+                    $this->basketProductService->createOrderItemComponents($orderItem, $sku->product, (float) $line['quantity']);
+                }
             }
+
+            $this->inventoryService->markBasketComponentsReserved($order->fresh('items.components'));
 
             Payment::create([
                 'order_id' => $order->id,

@@ -6,6 +6,7 @@ use App\Models\Order;
 use App\Models\Payment;
 use App\Models\PaymentGateway;
 use App\Services\InventoryService;
+use App\Services\ReferralService;
 use App\Services\Payments\DummyGateway;
 use App\Services\Payments\FlutterwaveGateway;
 use App\Services\Payments\PaystackGateway;
@@ -104,6 +105,8 @@ class PaymentService
                     'status' => 'processing',
                 ]);
 
+                app(ReferralService::class)->handleOrderEvent($order->fresh(), 'paid_order');
+
                 DB::afterCommit(fn () => app(OrderStatusEmailService::class)->notify($order->fresh(['user', 'items.sku.product']), [
                     ['type' => 'Payment status', 'old' => $oldPaymentStatus, 'new' => 'paid'],
                     ['type' => 'Order status', 'old' => $oldOrderStatus, 'new' => 'processing'],
@@ -111,20 +114,8 @@ class PaymentService
             }
 
             if ($normalizedStatus === 'failed') {
-                $order->loadMissing('items.sku');
-
-                $inventoryItems = $order->items
-                    ->filter(fn ($item) => $item->sku)
-                    ->map(fn ($item) => [
-                        'sku' => $item->sku,
-                        'qty' => (int) $item->quantity,
-                    ])
-                    ->values()
-                    ->all();
-
-                if (!empty($inventoryItems)) {
-                    $this->inventoryService->release($inventoryItems);
-                }
+                $order->loadMissing('items.sku', 'items.components.componentSku');
+                $this->inventoryService->releaseOrder($order);
 
                 $order->update([
                     'payment_status' => 'failed',

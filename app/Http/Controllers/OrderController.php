@@ -6,6 +6,7 @@ use App\Models\Order;
 use App\Models\OrderFulfillment;
 use App\Jobs\AdjustInventoryJob;
 use App\Services\OrderStatusEmailService;
+use App\Services\ReferralService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -92,6 +93,8 @@ class OrderController extends Controller
                 'status' => 'cancelled',
                 'payment_status' => 'refunded',
             ]);
+
+            app(ReferralService::class)->cancelRewardsForOrder($order, 'refunded');
         });
 
         app(OrderStatusEmailService::class)->notify($order->fresh(['user', 'items.sku.product']), [
@@ -154,6 +157,11 @@ class OrderController extends Controller
 
         if ($request->status === 'cancelled') {
             AdjustInventoryJob::dispatch($order->id, 'release');
+            app(ReferralService::class)->cancelRewardsForOrder($order, 'cancelled');
+        }
+
+        if ($request->status === 'delivered') {
+            app(ReferralService::class)->handleOrderEvent($order->fresh(), 'delivered_order');
         }
 
         app(OrderStatusEmailService::class)->notify($order->fresh(['user', 'items.sku.product']), [[

@@ -1,81 +1,158 @@
 <template>
   <MainLayout>
-    <section class="max-w-4xl mx-auto px-4 py-10 space-y-6">
-      <div>
-        <h1 class="text-3xl font-bold text-primary">My Account</h1>
-        <p class="text-sm text-secondary mt-1">Manage your profile and account security.</p>
+    <section class="max-w-6xl mx-auto px-4 py-10 space-y-6">
+      <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div>
+          <p class="text-sm font-semibold uppercase tracking-wide text-secondary">Account</p>
+          <h1 class="mt-1 text-3xl font-bold text-primary">Welcome, {{ firstName }}</h1>
+          <p class="text-sm text-secondary mt-1">Manage your profile, security, orders, addresses, and referrals.</p>
+        </div>
+
+        <div class="flex flex-wrap gap-2">
+          <router-link to="/orders">
+            <Button variant="primary" icon="package-variant">Orders</Button>
+          </router-link>
+          <router-link to="/account/referrals">
+            <Button variant="outline" icon="account-multiple-plus">Referrals</Button>
+          </router-link>
+        </div>
       </div>
 
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card :elevation="2" class="p-5">
-          <h2 class="text-lg font-semibold text-primary mb-4">Profile</h2>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card :elevation="1" class="p-5">
+          <div class="flex items-center gap-3">
+            <div class="h-11 w-11 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+              <i class="mdi mdi-account-outline text-2xl"></i>
+            </div>
+            <div>
+              <p class="text-xs text-secondary">Profile</p>
+              <p class="font-semibold text-primary">{{ authStore.user?.name || 'Customer' }}</p>
+            </div>
+          </div>
+        </Card>
 
-          <form class="space-y-3" @submit.prevent="saveProfile">
+        <Card :elevation="1" class="p-5">
+          <div class="flex items-center gap-3">
+            <div class="h-11 w-11 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+              <i class="mdi mdi-email-outline text-2xl"></i>
+            </div>
+            <div class="min-w-0">
+              <p class="text-xs text-secondary">Email</p>
+              <p class="font-semibold text-primary truncate">{{ authStore.user?.email || 'Not set' }}</p>
+            </div>
+          </div>
+        </Card>
+
+        <Card :elevation="1" class="p-5">
+          <div class="flex items-center gap-3">
+            <div class="h-11 w-11 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+              <i class="mdi mdi-phone-outline text-2xl"></i>
+            </div>
+            <div>
+              <p class="text-xs text-secondary">Phone</p>
+              <p class="font-semibold text-primary">{{ authStore.user?.phone || 'Not set' }}</p>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <Card :elevation="2" class="p-5 lg:col-span-2">
+          <div class="flex items-center justify-between gap-4 mb-4">
+            <div>
+              <h2 class="text-lg font-semibold text-primary">Profile Details</h2>
+              <p class="text-sm text-secondary">Keep your contact information current.</p>
+            </div>
+            <i class="mdi mdi-card-account-details-outline text-2xl text-primary"></i>
+          </div>
+
+          <form class="grid grid-cols-1 md:grid-cols-2 gap-4" @submit.prevent="saveProfile">
             <div>
               <label class="block text-sm font-medium text-primary mb-1">Name</label>
-              <input v-model="profileForm.name" type="text" class="w-full border border-DEFAULT rounded-lg px-3 py-2" required />
+              <input v-model="profileForm.name" type="text" class="w-full border border-DEFAULT rounded-lg px-3 py-2 focus:outline-none focus:border-primary" required />
             </div>
             <div>
               <label class="block text-sm font-medium text-primary mb-1">Email</label>
-              <input v-model="profileForm.email" type="email" class="w-full border border-DEFAULT rounded-lg px-3 py-2" required />
+              <input v-model="profileForm.email" type="email" class="w-full border border-DEFAULT rounded-lg px-3 py-2 focus:outline-none focus:border-primary" required />
             </div>
             <div>
               <label class="block text-sm font-medium text-primary mb-1">Phone</label>
-              <input v-model="profileForm.phone" type="text" class="w-full border border-DEFAULT rounded-lg px-3 py-2" />
+              <input v-model="profileForm.phone" type="text" class="w-full border border-DEFAULT rounded-lg px-3 py-2 focus:outline-none focus:border-primary" />
             </div>
 
-            <p v-if="profileMessage" class="text-sm" :class="profileSuccess ? 'text-success' : 'text-danger'">
-              {{ profileMessage }}
-            </p>
+            <div class="md:col-span-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p v-if="profileMessage" class="text-sm" :class="profileSuccess ? 'text-success' : 'text-danger'">
+                {{ profileMessage }}
+              </p>
+              <span v-else class="text-sm text-secondary">Changes apply to your customer profile.</span>
 
-            <Button type="submit" variant="primary" :loading="savingProfile">Save Profile</Button>
+              <Button type="submit" variant="primary" icon="content-save-outline" :loading="savingProfile">Save Profile</Button>
+            </div>
           </form>
         </Card>
 
         <Card :elevation="2" class="p-5">
-          <h2 class="text-lg font-semibold text-primary mb-4">Change Password</h2>
+          <h2 class="text-lg font-semibold text-primary mb-3">Quick Actions</h2>
+          <div class="space-y-2">
+            <router-link v-for="action in quickActions" :key="action.to" :to="action.to" class="flex items-center justify-between rounded-lg border border-DEFAULT px-3 py-3 hover:border-primary/50 transition">
+              <span class="flex items-center gap-3">
+                <i :class="`mdi mdi-${action.icon} text-xl text-primary`"></i>
+                <span class="font-medium text-primary">{{ action.label }}</span>
+              </span>
+              <i class="mdi mdi-chevron-right text-secondary"></i>
+            </router-link>
+          </div>
+        </Card>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <Card :elevation="2" class="p-5">
+          <div class="flex items-center justify-between gap-4 mb-4">
+            <div>
+              <h2 class="text-lg font-semibold text-primary">Security</h2>
+              <p class="text-sm text-secondary">Update your password regularly.</p>
+            </div>
+            <i class="mdi mdi-shield-lock-outline text-2xl text-primary"></i>
+          </div>
 
           <form class="space-y-3" @submit.prevent="savePassword">
             <div>
               <label class="block text-sm font-medium text-primary mb-1">Current password</label>
-              <input v-model="passwordForm.current_password" type="password" class="w-full border border-DEFAULT rounded-lg px-3 py-2" required />
+              <input v-model="passwordForm.current_password" type="password" class="w-full border border-DEFAULT rounded-lg px-3 py-2 focus:outline-none focus:border-primary" required />
             </div>
             <div>
               <label class="block text-sm font-medium text-primary mb-1">New password</label>
-              <input v-model="passwordForm.password" type="password" minlength="8" class="w-full border border-DEFAULT rounded-lg px-3 py-2" required />
+              <input v-model="passwordForm.password" type="password" minlength="8" class="w-full border border-DEFAULT rounded-lg px-3 py-2 focus:outline-none focus:border-primary" required />
             </div>
             <div>
               <label class="block text-sm font-medium text-primary mb-1">Confirm password</label>
-              <input v-model="passwordForm.password_confirmation" type="password" minlength="8" class="w-full border border-DEFAULT rounded-lg px-3 py-2" required />
+              <input v-model="passwordForm.password_confirmation" type="password" minlength="8" class="w-full border border-DEFAULT rounded-lg px-3 py-2 focus:outline-none focus:border-primary" required />
             </div>
 
             <p v-if="passwordMessage" class="text-sm" :class="passwordSuccess ? 'text-success' : 'text-danger'">
               {{ passwordMessage }}
             </p>
 
-            <Button type="submit" variant="outline" :loading="savingPassword">Update Password</Button>
+            <Button type="submit" variant="outline" icon="lock-reset" :loading="savingPassword">Update Password</Button>
           </form>
         </Card>
-      </div>
 
-      <Card :elevation="2" class="p-5">
-        <h2 class="text-lg font-semibold text-primary mb-3">Quick Actions</h2>
-        <div class="flex flex-wrap gap-3">
-          <router-link to="/addresses">
-            <Button variant="outline" icon="map-marker">Saved Addresses</Button>
-          </router-link>
-          <router-link to="/orders">
-            <Button variant="ghost" icon="package-variant">View Orders</Button>
-          </router-link>
-          <Button variant="danger" icon="logout" @click="logout">Logout</Button>
-        </div>
-      </Card>
+        <Card :elevation="2" class="p-5 lg:col-span-2">
+          <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 class="text-lg font-semibold text-primary">Session</h2>
+              <p class="text-sm text-secondary">Sign out from this device when you are done shopping.</p>
+            </div>
+            <Button variant="danger" icon="logout" @click="logout">Logout</Button>
+          </div>
+        </Card>
+      </div>
     </section>
   </MainLayout>
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import MainLayout from '../components/layout/MainLayout.vue';
 import Card from '../components/ui/Card.vue';
@@ -91,6 +168,18 @@ const profileMessage = ref('');
 const passwordMessage = ref('');
 const profileSuccess = ref(false);
 const passwordSuccess = ref(false);
+
+const firstName = computed(() => {
+  const name = authStore.user?.name || 'there';
+  return name.split(' ')[0] || name;
+});
+
+const quickActions = [
+  { to: '/orders', label: 'Order history', icon: 'package-variant' },
+  { to: '/addresses', label: 'Saved addresses', icon: 'map-marker-outline' },
+  { to: '/account/referrals', label: 'Invite and earn', icon: 'account-multiple-plus-outline' },
+  { to: '/cart', label: 'Shopping cart', icon: 'cart-outline' },
+];
 
 const profileForm = reactive({
   name: '',

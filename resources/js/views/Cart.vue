@@ -61,6 +61,10 @@
                   <div class="mt-2 space-y-1 text-xs text-secondary sm:text-sm">
                     <p class="break-words"><span class="font-medium">SKU:</span> {{ item.sku_code }}</p>
                     <p v-if="item.option_label" class="break-words"><span class="font-medium">Option:</span> {{ item.option_label }}</p>
+                    <p v-if="item.product_type === 'basket'" class="inline-flex items-center gap-1 rounded bg-orange-50 px-2 py-1 text-orange-700">
+                      <i class="mdi mdi-basket-outline"></i>
+                      Basket
+                    </p>
                   </div>
 
                   <!-- Attributes -->
@@ -73,6 +77,20 @@
                     >
                       {{ attr.name }}: {{ attr.value }}
                     </Badge>
+                  </div>
+                </div>
+              </div>
+
+              <div v-if="item.product_type === 'basket' && item.basket_components?.length" class="mt-4 rounded-lg border border-orange-100 bg-orange-50/50 p-3">
+                <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-orange-800">Included items</p>
+                <div class="grid gap-2 sm:grid-cols-2">
+                  <div
+                    v-for="component in item.basket_components"
+                    :key="component.id || component.component_sku_id"
+                    class="text-xs text-secondary"
+                  >
+                    <span class="font-medium text-primary">{{ component.product_title }}</span>
+                    <span> - {{ component.total_quantity }} {{ component.unit_name || '' }}</span>
                   </div>
                 </div>
               </div>

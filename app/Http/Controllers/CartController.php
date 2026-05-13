@@ -7,6 +7,7 @@ use App\Models\CartItem;
 use App\Models\Coupon;
 use App\Models\Product;
 use App\Models\Sku;
+use App\Services\BasketProductService;
 use Illuminate\Http\Request;
 
 /**
@@ -14,6 +15,10 @@ use Illuminate\Http\Request;
  */
 class CartController extends Controller
 {
+    public function __construct(private readonly BasketProductService $basketProductService)
+    {
+    }
+
     /**
      * Get or create cart for the current user/session.
      */
@@ -50,7 +55,7 @@ class CartController extends Controller
         $cart = $this->getCart($request)->load(['coupon']);
 
         $items = $cart->items()
-            ->with(['sku.product.images', 'sku.stocks', 'productOption'])
+            ->with(['sku.product.images', 'sku.product.basketComponents.componentSku.product', 'sku.product.basketComponents.componentSku.stocks', 'sku.product.basketComponents.unit', 'sku.stocks', 'productOption'])
             ->get()
             ->map(function ($item) {
                 $sku = $item->sku;
@@ -58,9 +63,12 @@ class CartController extends Controller
                     return null;
                 }
 
-                $availableStock = $sku->stocks->sum(function ($stock) {
-                    return $stock->on_hand - $stock->reserved;
-                });
+                $isBasket = $this->basketProductService->isBasketProduct($sku->product);
+                $availableStock = $isBasket
+                    ? $this->basketProductService->availableQuantity($sku->product)
+                    : $sku->stocks->sum(function ($stock) {
+                        return $stock->on_hand - $stock->reserved;
+                    });
 
                 $unitPrice = (float) $sku->price;
                 $optionLabel = $item->option_label_snapshot ?: ($item->productOption?->display_label ?? $sku->display_label ?? null);
@@ -71,6 +79,7 @@ class CartController extends Controller
                     'product_option_id' => $item->product_option_id,
                     'sku_code' => $sku->sku_code,
                     'product_id' => $sku->product->id,
+                    'product_type' => $sku->product->product_type ?? Product::TYPE_SIMPLE,
                     'product_title' => $item->product_name_snapshot ?: $sku->product->title,
                     'product_slug' => $sku->product->slug,
                     'product_image' => $item->image_snapshot ?: $sku->product->image,
@@ -81,6 +90,15 @@ class CartController extends Controller
                     'subtotal' => $unitPrice * $item->quantity,
                     'available_stock' => $availableStock,
                     'in_stock' => $availableStock >= $item->quantity,
+                    'basket_components' => $isBasket ? $sku->product->basketComponents->map(fn ($component) => [
+                        'id' => $component->id,
+                        'component_sku_id' => $component->component_sku_id,
+                        'product_title' => $component->componentSku?->product?->title,
+                        'sku_code' => $component->componentSku?->sku_code,
+                        'quantity' => (float) $component->quantity,
+                        'total_quantity' => (float) $component->quantity * (int) $item->quantity,
+                        'unit_name' => $component->unit?->name ?: $component->componentSku?->unit,
+                    ])->values() : [],
                 ];
             })->filter()->values();
 
@@ -127,7 +145,7 @@ class CartController extends Controller
         $sku = null;
 
         if ($request->filled('product_id')) {
-            $product = Product::with(['skus.stocks'])->findOrFail((int) $validated['product_id']);
+            $product = Product::with(['skus.stocks', 'basketComponents.componentSku.stocks', 'basketComponents.unit'])->findOrFail((int) $validated['product_id']);
         }
 
         if ($request->filled('sku_id')) {
@@ -147,7 +165,10 @@ class CartController extends Controller
             ], 422);
         }
 
-        if (!$sku) {
+        if ($this->basketProductService->isBasketProduct($product)) {
+            $sku = $this->basketProductService->parentSku($product);
+            $sku?->loadMissing('stocks');
+        } elseif (!$sku) {
             $sku = $product->skus()
                 ->where('active', true)
                 ->orderBy('sort_order')
@@ -162,7 +183,7 @@ class CartController extends Controller
             ], 422);
         }
 
-        if ($product->has_options && !$request->filled('sku_id')) {
+        if (!$this->basketProductService->isBasketProduct($product) && $product->has_options && !$request->filled('sku_id')) {
             return response()->json([
                 'message' => 'Please select a product option before adding to cart',
             ], 422);
@@ -175,9 +196,11 @@ class CartController extends Controller
         }
 
         // Check stock availability
-        $availableStock = $sku->stocks->sum(function ($stock) {
-            return $stock->on_hand - $stock->reserved;
-        });
+        $availableStock = $this->basketProductService->isBasketProduct($product)
+            ? $this->basketProductService->availableQuantity($product)
+            : $sku->stocks->sum(function ($stock) {
+                return $stock->on_hand - $stock->reserved;
+            });
 
         if ($availableStock < $validated['quantity']) {
             return response()->json([
@@ -204,7 +227,7 @@ class CartController extends Controller
                 'quantity' => $newQuantity,
                 'price' => $sku->price,
                 'product_name_snapshot' => $product->title,
-                'option_label_snapshot' => $product->has_options ? $sku->display_label : null,
+                'option_label_snapshot' => $product->has_options && !$this->basketProductService->isBasketProduct($product) ? $sku->display_label : null,
                 'image_snapshot' => $sku->image_path ?: $product->image,
             ]);
         } else {
@@ -214,7 +237,7 @@ class CartController extends Controller
                 'quantity' => $validated['quantity'],
                 'price' => $sku->price,
                 'product_name_snapshot' => $product->title,
-                'option_label_snapshot' => $product->has_options ? $sku->display_label : null,
+                'option_label_snapshot' => $product->has_options && !$this->basketProductService->isBasketProduct($product) ? $sku->display_label : null,
                 'image_snapshot' => $sku->image_path ?: $product->image,
             ]);
         }
@@ -236,12 +259,14 @@ class CartController extends Controller
         ]);
 
         $cart = $this->getCart($request);
-        $cartItem = $cart->items()->with('sku.stocks')->findOrFail($id);
+        $cartItem = $cart->items()->with('sku.stocks', 'sku.product.basketComponents.componentSku.stocks')->findOrFail($id);
 
         // Check stock availability
-        $availableStock = $cartItem->sku->stocks->sum(function ($stock) {
-            return $stock->on_hand - $stock->reserved;
-        });
+        $availableStock = $this->basketProductService->isBasketProduct($cartItem->sku?->product)
+            ? $this->basketProductService->availableQuantity($cartItem->sku->product)
+            : $cartItem->sku->stocks->sum(function ($stock) {
+                return $stock->on_hand - $stock->reserved;
+            });
 
         if ($availableStock < $request->quantity) {
             return response()->json([

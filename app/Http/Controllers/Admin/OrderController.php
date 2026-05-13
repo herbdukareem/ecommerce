@@ -13,6 +13,7 @@ use App\Models\OrderFulfillment;
 use App\Services\CurrencyFormatter;
 use App\Services\Logistics\LogisticsManager;
 use App\Services\OrderStatusEmailService;
+use App\Services\ReferralService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -119,10 +120,16 @@ class OrderController extends Controller
 
         if ($data['status'] === 'delivered') {
             AdjustInventoryJob::dispatch($order->id, 'commit');
+            app(ReferralService::class)->handleOrderEvent($order->fresh(), 'delivered_order');
         }
 
         if ($data['status'] === 'cancelled') {
             AdjustInventoryJob::dispatch($order->id, 'release');
+            app(ReferralService::class)->cancelRewardsForOrder($order, 'cancelled');
+        }
+
+        if ($data['status'] === 'refunded') {
+            app(ReferralService::class)->cancelRewardsForOrder($order, 'refunded');
         }
 
         // Create fulfillment record if status is shipped or delivered
@@ -160,6 +167,10 @@ class OrderController extends Controller
         ]);
 
         $order->update($data);
+
+        if ($data['payment_status'] === 'refunded') {
+            app(ReferralService::class)->cancelRewardsForOrder($order, 'refunded');
+        }
 
         app(OrderStatusEmailService::class)->notify($order->fresh(['user', 'items.sku.product']), [[
             'type' => 'Payment status',
@@ -277,6 +288,10 @@ class OrderController extends Controller
         }
 
         $order->update($payload);
+
+        if ($nextStatus === 'delivered') {
+            app(ReferralService::class)->handleOrderEvent($order->fresh(), 'delivered_order');
+        }
 
         app(OrderStatusEmailService::class)->notify($order->fresh(['user', 'items.sku.product', 'deliveryPartner', 'dispatchRider.user']), [[
             'type' => 'Delivery status',
