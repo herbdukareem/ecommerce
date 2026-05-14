@@ -26,7 +26,7 @@
             <tr>
               <th class="text-left p-3">Product</th>
               <th class="text-left p-3">SKU</th>
-              <th class="text-left p-3">Remaining</th>
+              <th class="text-left p-3">Quantity</th>
               <th class="text-left p-3">Cost</th>
               <th class="text-left p-3">Selling</th>
               <th class="text-left p-3">Expiry</th>
