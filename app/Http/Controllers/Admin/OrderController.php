@@ -10,6 +10,8 @@ use App\Models\DispatchAssignment;
 use App\Models\DispatchRider;
 use App\Models\Order;
 use App\Models\OrderFulfillment;
+use App\Models\Payment;
+use App\Services\InventoryService;
 use App\Services\CurrencyFormatter;
 use App\Services\Logistics\LogisticsManager;
 use App\Services\OrderStatusEmailService;
@@ -21,7 +23,10 @@ use Illuminate\Validation\ValidationException;
 
 class OrderController extends Controller
 {
-    public function __construct(private readonly LogisticsManager $logisticsManager)
+    public function __construct(
+        private readonly LogisticsManager $logisticsManager,
+        private readonly InventoryService $inventoryService
+    )
     {
     }
 
@@ -118,7 +123,7 @@ class OrderController extends Controller
 
         $order->update($data);
 
-        if ($data['status'] === 'delivered') {
+        if ($data['status'] === 'delivered' && $order->payment_status === 'paid') {
             AdjustInventoryJob::dispatch($order->id, 'commit');
             app(ReferralService::class)->handleOrderEvent($order->fresh(), 'delivered_order');
         }
@@ -168,6 +173,10 @@ class OrderController extends Controller
 
         $order->update($data);
 
+        if ($data['payment_status'] === 'paid') {
+            $order = $this->collectOrderPayment($order, $request->user(), $request->input('payment_reference'));
+        }
+
         if ($data['payment_status'] === 'refunded') {
             app(ReferralService::class)->cancelRewardsForOrder($order, 'refunded');
         }
@@ -182,6 +191,89 @@ class OrderController extends Controller
             'message' => 'Payment status updated successfully',
             'order' => $order
         ]);
+    }
+
+    public function collectPayment(Request $request, int $id)
+    {
+        $data = $request->validate([
+            'payment_reference' => 'nullable|string|max:120',
+        ]);
+
+        $order = Order::query()->with(['items.sku.product', 'items.components.componentSku', 'payments'])->findOrFail($id);
+        $oldPaymentStatus = $order->payment_status;
+
+        $order = $this->collectOrderPayment($order, $request->user(), $data['payment_reference'] ?? null);
+
+        app(OrderStatusEmailService::class)->notify($order->fresh(['user', 'items.sku.product']), [[
+            'type' => 'Payment status',
+            'old' => $oldPaymentStatus,
+            'new' => 'paid',
+        ]]);
+
+        return response()->json([
+            'message' => 'Payment collected successfully.',
+            'order' => $order->fresh(['payments', 'items.sku.product']),
+        ]);
+    }
+
+    protected function collectOrderPayment(Order $order, $adminUser = null, ?string $reference = null): Order
+    {
+        return DB::transaction(function () use ($order, $adminUser, $reference) {
+            $lockedOrder = Order::query()
+                ->with(['items.sku.product', 'items.components.componentSku', 'payments'])
+                ->lockForUpdate()
+                ->findOrFail($order->id);
+
+            if ($lockedOrder->payment_status === 'paid') {
+                return $lockedOrder;
+            }
+
+            $committed = $this->inventoryService->commitOrder(
+                $lockedOrder,
+                $adminUser
+            );
+
+            if (!$committed) {
+                throw ValidationException::withMessages([
+                    'payment_status' => ['Unable to commit inventory for this paid order.'],
+                ]);
+            }
+
+            $payment = $lockedOrder->payments()->latest('id')->first();
+            if (!$payment) {
+                $payment = new Payment([
+                    'amount' => $lockedOrder->total,
+                    'method' => $lockedOrder->payment_mode,
+                    'status' => 'pending',
+                ]);
+                $lockedOrder->payments()->save($payment);
+            }
+
+            $payment->update([
+                'status' => 'paid',
+                'transaction_id' => $reference ?: $payment->transaction_id,
+                'paid_at' => $payment->paid_at ?: now(),
+                'gateway_response' => array_merge((array) ($payment->gateway_response ?? []), [
+                    'provider' => $lockedOrder->payment_mode,
+                    'mode' => 'manual_collection',
+                    'collected_by' => $adminUser?->id,
+                ]),
+            ]);
+
+            $lockedOrder->update([
+                'payment_status' => 'paid',
+                'payment_reference' => $reference ?: $lockedOrder->payment_reference,
+                'status' => $lockedOrder->status === 'pending' ? 'processing' : $lockedOrder->status,
+            ]);
+
+            $fresh = $lockedOrder->fresh();
+            app(ReferralService::class)->handleOrderEvent($fresh, 'paid_order');
+            if ($fresh->status === 'delivered' || $fresh->delivery_status === 'delivered') {
+                app(ReferralService::class)->handleOrderEvent($fresh, 'delivered_order');
+            }
+
+            return $fresh;
+        }, 3);
     }
 
     public function assignDeliveryPartner(Request $request, int $id)

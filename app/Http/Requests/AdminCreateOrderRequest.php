@@ -22,7 +22,7 @@ class AdminCreateOrderRequest extends FormRequest
             'city_id' => 'required|integer|exists:operation_cities,id',
             'area_id' => 'required|integer|exists:operation_areas,id',
             'dispatch_time_slot_id' => 'required|integer|exists:dispatch_time_slots,id',
-            'payment_mode' => 'required|string|in:cash,transfer,bank_deposit,pos,online_payment,other,card,bank_transfer,wallet',
+            'payment_mode' => 'required|string|in:cash,transfer,bank_deposit,pos,online_payment,other,card,bank_transfer,wallet,pay_on_delivery',
             'payment_reference' => 'nullable|string|max:120',
             'order_note' => 'nullable|string|max:1000',
             'internal_note' => 'nullable|string|max:1000',

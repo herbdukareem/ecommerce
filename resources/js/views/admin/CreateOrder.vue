@@ -102,6 +102,7 @@ const productLine = reactive({
 
 const paymentOptions = [
   { value: 'cash', label: 'Cash' },
+  { value: 'pay_on_delivery', label: 'Pay on Delivery' },
   { value: 'transfer', label: 'Transfer' },
   { value: 'bank_deposit', label: 'Bank Deposit' },
   { value: 'pos', label: 'POS' },

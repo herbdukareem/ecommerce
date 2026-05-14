@@ -101,6 +101,7 @@ class ProductController extends Controller
             'price' => 'required|numeric|min:0',
             'status' => 'required|in:active,draft,archived',
             'product_type' => 'sometimes|in:simple,variant,basket',
+            'pay_on_delivery_enabled' => 'sometimes|boolean',
             'has_options' => 'sometimes|boolean',
             'category_id' => 'required|exists:categories,id',
             'sku' => 'nullable|string|max:100',
@@ -132,6 +133,7 @@ class ProductController extends Controller
                 'status' => $data['status'],
                 'has_options' => $hasOptions,
                 'product_type' => $productType,
+                'pay_on_delivery_enabled' => (bool) ($data['pay_on_delivery_enabled'] ?? false),
             ]);
 
             // Attach category (single category)
@@ -259,6 +261,7 @@ class ProductController extends Controller
             'price' => 'sometimes|numeric|min:0',
             'status' => 'sometimes|in:active,draft,archived',
             'product_type' => 'sometimes|in:simple,variant,basket',
+            'pay_on_delivery_enabled' => 'sometimes|boolean',
             'has_options' => 'sometimes|boolean',
             'category_id' => 'sometimes|exists:categories,id',
             'sku' => 'nullable|string|max:100',
@@ -291,6 +294,9 @@ class ProductController extends Controller
             if (isset($data['product_type'])) {
                 $updateData['product_type'] = $data['product_type'];
                 $updateData['has_options'] = $data['product_type'] === Product::TYPE_VARIANT;
+            }
+            if (array_key_exists('pay_on_delivery_enabled', $data)) {
+                $updateData['pay_on_delivery_enabled'] = (bool) $data['pay_on_delivery_enabled'];
             }
 
             $product->update($updateData);

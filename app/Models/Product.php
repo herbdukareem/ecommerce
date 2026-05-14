@@ -11,11 +11,12 @@ class Product extends Model
 
     protected $fillable = [
         'vendor_id', 'title', 'slug', 'description', 'base_price', 'status',
-        'name', 'price', 'image', 'has_options', 'product_type', // New fields for admin product management
+        'name', 'price', 'image', 'has_options', 'product_type', 'pay_on_delivery_enabled', // New fields for admin product management
     ];
 
     protected $casts = [
         'has_options' => 'boolean',
+        'pay_on_delivery_enabled' => 'boolean',
     ];
 
     public const TYPE_SIMPLE = 'simple';

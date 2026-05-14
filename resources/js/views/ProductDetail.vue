@@ -37,6 +37,10 @@
         <div>
           <p class="text-sm text-secondary mb-2">{{ product.categories?.[0]?.name || 'General' }}</p>
           <h1 class="text-3xl font-bold text-primary mb-3">{{ product.title }}</h1>
+          <div v-if="product.pay_on_delivery_enabled" class="mb-3 inline-flex items-center gap-1 rounded-full bg-success/10 px-3 py-1 text-xs font-semibold text-success">
+            <i class="mdi mdi-cash-check"></i>
+            Pay on delivery available
+          </div>
           <p class="text-secondary mb-6">{{ product.description || 'No description available.' }}</p>
 
           <Card :elevation="2" class="p-5 mb-6">

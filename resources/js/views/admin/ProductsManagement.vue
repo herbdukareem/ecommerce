@@ -304,6 +304,14 @@
                   />
                 </div>
 
+                <div class="md:col-span-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                  <label class="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
+                    <input v-model="productForm.pay_on_delivery_enabled" type="checkbox" class="rounded border-gray-300" />
+                    Pay on delivery eligible
+                  </label>
+                  <p class="mt-1 text-xs text-gray-500">Customers can choose pay on delivery only when every cart product is eligible.</p>
+                </div>
+
                 <div v-if="productForm.product_type !== 'basket'" class="md:col-span-2">
                   <label class="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
                     <input v-model="productForm.has_options" type="checkbox" class="rounded border-gray-300" />
@@ -684,6 +692,7 @@ const productForm = ref({
   has_options: false,
   price: 0,
   sku: '',
+  pay_on_delivery_enabled: false,
   images: [],
   variants: [],
   basket_components: [],
@@ -784,6 +793,7 @@ const resetForm = () => {
     has_options: false,
     price: 0,
     sku: '',
+    pay_on_delivery_enabled: false,
     images: [],
     variants: [],
     basket_components: [],
@@ -980,6 +990,7 @@ const saveProduct = async () => {
     formData.append('has_options', productForm.value.has_options ? '1' : '0');
     formData.append('price', productForm.value.price);
     formData.append('sku', productForm.value.sku || '');
+    formData.append('pay_on_delivery_enabled', productForm.value.pay_on_delivery_enabled ? '1' : '0');
 
     // Handle images
     if (showEditModal.value) {
@@ -1062,6 +1073,7 @@ const editProduct = (product) => {
     has_options: !!product.has_options,
     price: product.price || product.base_price,
     sku: product.skus?.[0]?.sku_code || product.sku || '',
+    pay_on_delivery_enabled: product.pay_on_delivery_enabled === true || product.pay_on_delivery_enabled === 1,
     images: product.images ? product.images.map(img => ({
       preview: img.image_url,
       id: img.id,

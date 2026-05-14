@@ -57,6 +57,23 @@
           <div class="xl:col-span-4 space-y-6">
             <OrderSummaryCard :order="order" :format-currency="formatCurrency" :format-date="formatDate" />
 
+            <Card v-if="isPayOnDelivery" :elevation="2" class="p-5">
+              <h2 class="text-lg font-semibold text-primary">Pay on Delivery</h2>
+              <p class="mt-1 text-sm text-secondary">
+                {{ order.payment_status === 'paid' ? 'Payment has been collected for this delivery.' : 'Confirm collection after the customer pays on delivery.' }}
+              </p>
+              <Input v-if="order.payment_status !== 'paid'" v-model="collectionReference" class="mt-4" label="Collection Reference" />
+              <Button
+                v-if="order.payment_status !== 'paid'"
+                class="mt-4 w-full"
+                icon="cash-check"
+                :loading="collectingPayment"
+                @click="collectPayment"
+              >
+                Mark Payment Collected
+              </Button>
+            </Card>
+
             <Card :elevation="2" class="p-5">
               <h2 class="text-lg font-semibold text-primary">Customer</h2>
               <div class="mt-4 space-y-3 text-sm">
@@ -177,6 +194,8 @@ const errorMessage = ref('');
 const assigning = ref(false);
 const assigningRider = ref(false);
 const updatingStatus = ref(false);
+const collectingPayment = ref(false);
+const collectionReference = ref('');
 
 const order = ref(null);
 const partners = ref([]);
@@ -198,6 +217,7 @@ const riderAssignment = ref({
 });
 
 const orderId = computed(() => route.params.id);
+const isPayOnDelivery = computed(() => order.value?.payment_mode === 'pay_on_delivery' || order.value?.payments?.some((payment) => payment.method === 'pay_on_delivery'));
 
 const deliveryStatusOptions = [
   { value: 'pending_assignment', label: 'Pending Assignment' },
@@ -345,6 +365,24 @@ const updateDeliveryStatus = async () => {
     toast?.error(message || 'Unable to update delivery status');
   } finally {
     updatingStatus.value = false;
+  }
+};
+
+const collectPayment = async () => {
+  collectingPayment.value = true;
+  try {
+    await axios.post(`/api/admin/orders/${orderId.value}/collect-payment`, {
+      payment_reference: collectionReference.value || null,
+    });
+    toast?.success('Payment collected');
+    collectionReference.value = '';
+    await loadOrder();
+  } catch (error) {
+    const errors = error.response?.data?.errors;
+    const message = errors ? Object.values(errors).flat().join(' ') : error.response?.data?.message;
+    toast?.error(message || 'Unable to mark payment collected');
+  } finally {
+    collectingPayment.value = false;
   }
 };
 

@@ -271,6 +271,20 @@
           <ToggleRow v-model="settings.enable_reviews" title="Product Reviews" description="Allow customers to review products." />
           <ToggleRow v-model="settings.enable_wishlist" title="Wishlist" description="Enable wishlist functionality." />
           <ToggleRow v-model="settings.enable_coupons" title="Coupons & Discounts" description="Enable coupon code functionality." />
+          <ToggleRow v-model="settings.pay_on_delivery_enabled" title="Pay on Delivery" description="Allow eligible products to be paid for when delivered." />
+          <div class="grid grid-cols-1 gap-4 py-5 lg:grid-cols-3">
+            <Field label="Minimum COD Order">
+              <input v-model.number="settings.pay_on_delivery_min_order_amount" type="number" min="0" step="0.01" class="form-input" />
+            </Field>
+            <Field label="Maximum COD Order">
+              <input v-model.number="settings.pay_on_delivery_max_order_amount" type="number" min="0" step="0.01" class="form-input" />
+              <p class="mt-2 text-xs text-gray-500">Use 0 for no maximum.</p>
+            </Field>
+            <Field label="Allowed City IDs">
+              <input v-model="settings.pay_on_delivery_allowed_city_ids" type="text" class="form-input" placeholder="1,2,3 or []" />
+              <p class="mt-2 text-xs text-gray-500">Leave [] or blank to allow all active checkout cities.</p>
+            </Field>
+          </div>
         </div>
         <SaveBar :saving="saving" />
       </form>
@@ -350,6 +364,10 @@ const settings = ref({
   enable_reviews: true,
   enable_wishlist: true,
   enable_coupons: true,
+  pay_on_delivery_enabled: false,
+  pay_on_delivery_min_order_amount: 0,
+  pay_on_delivery_max_order_amount: 0,
+  pay_on_delivery_allowed_city_ids: '[]',
   mail_mode: 'auto',
   active_mail_mode: 'sandbox',
   mail_sandbox_mailer: 'log',

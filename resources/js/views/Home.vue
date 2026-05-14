@@ -116,6 +116,10 @@
               </Badge>
             </div>
             <h3 class="font-semibold text-primary mb-2">{{ product.title }}</h3>
+            <span v-if="product.pay_on_delivery_enabled" class="mb-2 inline-flex items-center gap-1 rounded-full bg-success/10 px-2 py-1 text-xs font-semibold text-success">
+              <i class="mdi mdi-cash-check"></i>
+              Pay on delivery
+            </span>
             <div class="flex items-center gap-2 mb-2">
               <div class="flex items-center gap-1 text-warning">
                 <i class="mdi mdi-star text-sm"></i>

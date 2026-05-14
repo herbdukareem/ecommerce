@@ -7,6 +7,7 @@ export const useCheckoutStore = defineStore('checkout', {
     areas: [],
     dispatchSlots: [],
     gateways: [],
+    paymentOptions: [],
     loading: false,
   }),
 
@@ -57,6 +58,17 @@ export const useCheckoutStore = defineStore('checkout', {
         return { success: true, gateways: this.gateways };
       } catch (error) {
         return { success: false, error: error.response?.data?.message || 'Failed to load payment gateways.' };
+      }
+    },
+
+    async fetchPaymentOptions(params = {}) {
+      try {
+        const { data } = await axios.get('/api/checkout/payment-options', { params });
+        this.paymentOptions = data.payment_options || [];
+        this.gateways = this.paymentOptions.filter((option) => option.provider !== 'pay_on_delivery');
+        return { success: true, paymentOptions: this.paymentOptions };
+      } catch (error) {
+        return { success: false, error: error.response?.data?.message || 'Failed to load payment options.' };
       }
     },
 

@@ -30,6 +30,10 @@ class PaymentService
 
     public function initialize(Order $order, Payment $payment): array
     {
+        if ($payment->method === PayOnDeliveryService::METHOD || $order->payment_mode === PayOnDeliveryService::METHOD) {
+            throw new \RuntimeException('Pay on delivery orders do not require online payment initialization.');
+        }
+
         $gateway = $this->resolveGatewayForPayment($payment);
         $reference = 'ord_' . $order->id . '_pay_' . $payment->id . '_' . Str::uuid()->toString();
 

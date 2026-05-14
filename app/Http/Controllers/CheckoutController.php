@@ -8,6 +8,7 @@ use App\Models\DispatchTimeSlot;
 use App\Models\OperationArea;
 use App\Models\OperationCity;
 use App\Services\OrderPlacementService;
+use App\Services\PayOnDeliveryService;
 use App\Services\PaymentGatewayManager;
 use App\Services\ShippingRateService;
 use App\Mail\OrderConfirmation;
@@ -29,7 +30,8 @@ class CheckoutController extends Controller
     public function __construct(
         ShippingRateService $shippingService,
         OrderPlacementService $orderPlacementService,
-        PaymentGatewayManager $gatewayManager
+        PaymentGatewayManager $gatewayManager,
+        protected PayOnDeliveryService $payOnDeliveryService
     )
     {
         $this->shippingService = $shippingService;
@@ -156,6 +158,37 @@ class CheckoutController extends Controller
         ]);
     }
 
+    public function paymentOptions(Request $request)
+    {
+        $request->validate([
+            'city_id' => 'nullable|integer|exists:operation_cities,id',
+            'area_id' => 'nullable|integer|exists:operation_areas,id',
+        ]);
+
+        $cart = $this->getCart($request)?->load(['items.sku.product']);
+        $deliveryFee = 0;
+        if ($request->filled('area_id')) {
+            $deliveryFee = (float) (OperationArea::query()->where('id', $request->integer('area_id'))->value('delivery_fee') ?? 0);
+        }
+
+        $subtotal = $cart
+            ? (float) $cart->items->sum(fn ($item) => (float) $item->sku->price * (int) $item->quantity)
+            : 0;
+        $discount = (float) ($cart?->coupon_discount ?? 0);
+        $total = max(0, $subtotal - $discount) + $deliveryFee;
+
+        $onlineGateways = collect($this->gatewayManager->checkoutList())
+            ->map(fn ($gateway) => array_merge($gateway, ['available' => true, 'unavailable_reason' => null]))
+            ->values()
+            ->all();
+
+        return response()->json([
+            'payment_options' => array_merge($onlineGateways, [
+                $this->payOnDeliveryService->optionForCart($cart, $total, $request->integer('city_id') ?: null),
+            ]),
+        ]);
+    }
+
     /**
      * Place an order with simplified checkout payload.
      */
@@ -192,7 +225,7 @@ class CheckoutController extends Controller
             $validated = $request->validate([
                 'address_id' => 'required|integer|exists:addresses,id',
                 'payment_method' => 'nullable|string',
-                'payment_provider' => ['required', 'string', Rule::in(PaymentGatewayManager::SUPPORTED_PROVIDERS)],
+                'payment_provider' => ['required', 'string', Rule::in(array_merge(PaymentGatewayManager::SUPPORTED_PROVIDERS, [PayOnDeliveryService::METHOD]))],
                 'order_note' => 'nullable|string|max:1000',
                 'payment_reference' => 'nullable|string|max:120',
             ]);
@@ -227,12 +260,14 @@ class CheckoutController extends Controller
             }
 
             $provider = (string) $validated['payment_provider'];
-            try {
-                $this->gatewayManager->resolveProviderForCheckout($provider);
-            } catch (\Throwable $exception) {
-                throw ValidationException::withMessages([
-                    'payment_provider' => ['Selected payment provider is not available.'],
-                ]);
+            if ($provider !== PayOnDeliveryService::METHOD) {
+                try {
+                    $this->gatewayManager->resolveProviderForCheckout($provider);
+                } catch (\Throwable $exception) {
+                    throw ValidationException::withMessages([
+                        'payment_provider' => ['Selected payment provider is not available.'],
+                    ]);
+                }
             }
 
             return [
@@ -262,7 +297,7 @@ class CheckoutController extends Controller
             'city_id' => 'required|integer|exists:operation_cities,id',
             'area_id' => 'required|integer|exists:operation_areas,id',
             'dispatch_time_slot_id' => 'required|integer|exists:dispatch_time_slots,id',
-            'payment_mode' => ['required', 'string', Rule::in(PaymentGatewayManager::SUPPORTED_PROVIDERS)],
+            'payment_mode' => ['required', 'string', Rule::in(array_merge(PaymentGatewayManager::SUPPORTED_PROVIDERS, [PayOnDeliveryService::METHOD]))],
             'payment_reference' => 'nullable|string|max:120',
             'order_note' => 'nullable|string|max:1000',
         ]);
@@ -281,6 +316,16 @@ class CheckoutController extends Controller
 
         if (!$slot || $slot->status !== 'active') {
             throw ValidationException::withMessages(['dispatch_time_slot_id' => ['Selected dispatch slot must be active.']]);
+        }
+
+        if ($validated['payment_mode'] !== PayOnDeliveryService::METHOD) {
+            try {
+                $this->gatewayManager->resolveProviderForCheckout((string) $validated['payment_mode']);
+            } catch (\Throwable $exception) {
+                throw ValidationException::withMessages([
+                    'payment_mode' => ['Selected payment provider is not available.'],
+                ]);
+            }
         }
 
         return $validated;

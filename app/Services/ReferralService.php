@@ -186,7 +186,8 @@ class ReferralService
             return $order->payment_status === 'paid';
         }
 
-        return $order->status === 'delivered' || $order->delivery_status === 'delivered';
+        return $order->payment_status === 'paid'
+            && ($order->status === 'delivered' || $order->delivery_status === 'delivered');
     }
 
     protected function rewardAmount(float $orderTotal, array $settings): float

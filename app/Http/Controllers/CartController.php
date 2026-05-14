@@ -80,6 +80,7 @@ class CartController extends Controller
                     'sku_code' => $sku->sku_code,
                     'product_id' => $sku->product->id,
                     'product_type' => $sku->product->product_type ?? Product::TYPE_SIMPLE,
+                    'pay_on_delivery_enabled' => (bool) ($sku->product->pay_on_delivery_enabled ?? false),
                     'product_title' => $item->product_name_snapshot ?: $sku->product->title,
                     'product_slug' => $sku->product->slug,
                     'product_image' => $item->image_snapshot ?: $sku->product->image,

@@ -18,7 +18,8 @@ class OrderPlacementService
 {
     public function __construct(
         private readonly InventoryService $inventoryService,
-        private readonly BasketProductService $basketProductService
+        private readonly BasketProductService $basketProductService,
+        private readonly PayOnDeliveryService $payOnDeliveryService
     )
     {
     }
@@ -62,6 +63,10 @@ class OrderPlacementService
             $deliveryFee = (float) ($area->delivery_fee ?? 0);
             $tax = 0;
             $total = max(0, $subtotal - $discount) + $deliveryFee + $tax;
+
+            if (($payload['payment_mode'] ?? null) === PayOnDeliveryService::METHOD) {
+                $this->payOnDeliveryService->assertCartEligible($cart, $total, (int) $city->id);
+            }
 
             $order = Order::create([
                 'user_id' => $customer->id,

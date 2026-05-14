@@ -17,7 +17,7 @@
 
             <div>
               <label class="text-sm text-secondary mb-1 block">Area</label>
-              <Select v-model="form.area_id" :options="areaOptions" />
+              <Select v-model="form.area_id" :options="areaOptions" @update:model-value="refreshPaymentOptions" />
             </div>
 
             <div>
@@ -28,6 +28,7 @@
             <div>
               <label class="text-sm text-secondary mb-1 block">Payment Method</label>
               <Select v-model="form.payment_mode" :options="paymentOptions" />
+              <p v-if="codUnavailableReason" class="mt-1 text-xs text-secondary">{{ codUnavailableReason }}</p>
             </div>
 
             <div class="md:col-span-2">
@@ -132,13 +133,25 @@ const dispatchOptions = computed(() => [
 ]);
 
 const paymentOptions = computed(() => {
-  const dynamic = (checkoutStore.gateways || []).map((gateway) => ({ value: gateway.provider, label: gateway.display_name }));
-  return [{ value: '', label: 'Select payment gateway' }, ...dynamic];
+  const dynamic = (checkoutStore.paymentOptions || [])
+    .filter((option) => option.available !== false)
+    .map((option) => ({ value: option.provider, label: option.display_name }));
+  return [{ value: '', label: 'Select payment method' }, ...dynamic];
 });
 
 const selectedGatewayProvider = computed(() => {
   const providers = (checkoutStore.gateways || []).map((gateway) => gateway.provider);
   return providers.includes(form.payment_mode) ? form.payment_mode : null;
+});
+
+const isPayOnDelivery = computed(() => form.payment_mode === 'pay_on_delivery');
+
+const codUnavailableReason = computed(() => {
+  const option = (checkoutStore.paymentOptions || []).find((entry) => entry.provider === 'pay_on_delivery');
+  if (!option || option.available !== false) {
+    return '';
+  }
+  return option.unavailable_reason || 'Pay on delivery is not available for this cart.';
 });
 
 const selectedAreaFee = computed(() => {
@@ -159,6 +172,7 @@ const onCityChange = async () => {
   if (!result.success) {
     toast?.error(result.error);
   }
+  await refreshPaymentOptions();
 };
 
 const placeOrder = async () => {
@@ -167,12 +181,12 @@ const placeOrder = async () => {
   }
 
   if (!form.city_id || !form.area_id || !form.dispatch_time_slot_id || !form.payment_mode) {
-    toast?.error('City, area, dispatch slot, and payment gateway are required.');
+    toast?.error('City, area, dispatch slot, and payment method are required.');
     return;
   }
 
-  if (!selectedGatewayProvider.value) {
-    toast?.error('Please select a valid payment gateway before placing your order.');
+  if (!selectedGatewayProvider.value && !isPayOnDelivery.value) {
+    toast?.error('Please select a valid payment method before placing your order.');
     return;
   }
 
@@ -190,6 +204,13 @@ const placeOrder = async () => {
 
     if (!result.success) {
       toast?.error(result.error || 'Failed to place order.');
+      return;
+    }
+
+    if (isPayOnDelivery.value) {
+      toast?.success('Order placed successfully. Payment will be collected on delivery.');
+      await cartStore.loadCart();
+      router.push(`/orders/${result.order.id}`);
       return;
     }
 
@@ -383,6 +404,26 @@ const onImageError = (event) => {
   }
 };
 
+const refreshPaymentOptions = async () => {
+  const result = await checkoutStore.fetchPaymentOptions({
+    city_id: form.city_id || undefined,
+    area_id: form.area_id || undefined,
+  });
+
+  if (!result.success) {
+    toast?.error(result.error);
+    return;
+  }
+
+  const available = new Set((checkoutStore.paymentOptions || [])
+    .filter((option) => option.available !== false)
+    .map((option) => option.provider));
+
+  if (form.payment_mode && !available.has(form.payment_mode)) {
+    form.payment_mode = '';
+  }
+};
+
 onMounted(async () => {
   errorMessage.value = '';
 
@@ -390,16 +431,19 @@ onMounted(async () => {
     cartStore.loadCart(),
     checkoutStore.fetchCities(),
     checkoutStore.fetchDispatchTimeSlots(),
-    checkoutStore.fetchPaymentGateways(),
+    checkoutStore.fetchPaymentOptions(),
   ]);
-
-  if (!form.payment_mode && (checkoutStore.gateways || []).length === 1) {
-    form.payment_mode = checkoutStore.gateways[0].provider;
-  }
 
   if (!form.city_id && checkoutStore.cities.length) {
     form.city_id = checkoutStore.cities[0].id;
     await onCityChange();
+  }
+
+  await refreshPaymentOptions();
+
+  const availableOptions = (checkoutStore.paymentOptions || []).filter((option) => option.available !== false);
+  if (!form.payment_mode && availableOptions.length === 1) {
+    form.payment_mode = availableOptions[0].provider;
   }
 
   if (!cartStore.items.length) {

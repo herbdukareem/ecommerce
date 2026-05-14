@@ -74,6 +74,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::patch('/addresses/{id}/default', [App\Http\Controllers\AddressController::class, 'setDefault']);
 
         Route::post('/checkout/quote-shipping', [App\Http\Controllers\CheckoutController::class, 'quoteShipping']);
+        Route::get('/checkout/payment-options', [App\Http\Controllers\CheckoutController::class, 'paymentOptions']);
         Route::post('/checkout/place-order', [App\Http\Controllers\CheckoutController::class, 'placeOrder']);
         Route::post('/payments/orders/{orderId}/initialize', [App\Http\Controllers\PaymentController::class, 'initialize']);
         Route::post('/payments/{paymentId}/verify', [App\Http\Controllers\PaymentController::class, 'verify']);
@@ -223,6 +224,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('/orders/{id}/terminal-receipt', [App\Http\Controllers\Admin\OrderController::class, 'terminalReceipt'])->middleware('can:order.receipt.download');
         Route::put('/orders/{id}/status', [App\Http\Controllers\Admin\OrderController::class, 'updateStatus']);
         Route::put('/orders/{id}/payment-status', [App\Http\Controllers\Admin\OrderController::class, 'updatePaymentStatus']);
+        Route::post('/orders/{id}/collect-payment', [App\Http\Controllers\Admin\OrderController::class, 'collectPayment']);
         Route::put('/orders/{id}/delivery-assignment', [App\Http\Controllers\Admin\OrderController::class, 'assignDeliveryPartner']);
         Route::put('/orders/{id}/dispatch-rider', [App\Http\Controllers\Admin\OrderController::class, 'assignDispatchRider'])->middleware('can:dispatch-assignment.manage');
         Route::put('/orders/{id}/delivery-status', [App\Http\Controllers\Admin\OrderController::class, 'updateDeliveryStatus']);

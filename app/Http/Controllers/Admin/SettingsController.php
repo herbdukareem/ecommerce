@@ -87,6 +87,10 @@ class SettingsController extends Controller
             'enable_reviews' => 'sometimes|boolean',
             'enable_wishlist' => 'sometimes|boolean',
             'enable_coupons' => 'sometimes|boolean',
+            'pay_on_delivery_enabled' => 'sometimes|boolean',
+            'pay_on_delivery_min_order_amount' => 'sometimes|numeric|min:0',
+            'pay_on_delivery_max_order_amount' => 'sometimes|numeric|min:0',
+            'pay_on_delivery_allowed_city_ids' => 'sometimes|nullable',
             'payment_gateway' => 'sometimes|string',
             'payment_gateway_config' => 'sometimes|array',
             'email_from_name' => 'sometimes|string',
@@ -149,6 +153,7 @@ class SettingsController extends Controller
         Cache::forget('brand_settings');
         Cache::forget('homepage_settings');
         Cache::forget('currency_settings');
+        Cache::forget('pay_on_delivery_settings');
 
         return response()->json([
             'message' => 'Settings updated successfully'
@@ -309,6 +314,7 @@ class SettingsController extends Controller
             'enable_reviews',
             'enable_wishlist',
             'enable_coupons',
+            'pay_on_delivery_enabled',
             'homepage_flash_enabled',
             'homepage_flash_countdown_enabled',
             'homepage_hero_enabled',
