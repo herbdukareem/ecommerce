@@ -268,7 +268,7 @@ const navigation = [
     icon: 'receipt-text-outline',
     label: 'Sales',
     children: [
-      { path: '/admin/orders', icon: 'package-variant', label: 'Orders', badge: '12', badgeVariant: 'danger', exact: true },
+      { path: '/admin/orders', icon: 'package-variant', label: 'Orders' },
       { path: '/admin/orders/create', icon: 'cart-plus', label: 'Create Order' },
     ],
   },
