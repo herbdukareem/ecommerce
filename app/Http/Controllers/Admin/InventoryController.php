@@ -21,7 +21,7 @@ class InventoryController extends Controller
 
     public function index(Request $request)
     {
-        $query = InventoryBatch::query()->with(['product:id,title', 'sku:id,sku_code']);
+        $query = InventoryBatch::query()->with(['product:id,title', 'sku:id,sku_code', 'sku.stocks:id,sku_id,on_hand,reserved']);
 
         if ($request->filled('sku_id')) {
             $query->where('variant_id', (int) $request->input('sku_id'));
@@ -35,6 +35,14 @@ class InventoryController extends Controller
             ->orderBy('expiry_date')
             ->orderByDesc('created_at')
             ->paginate((int) $request->input('per_page', 20));
+
+        $batches->getCollection()->transform(function (InventoryBatch $batch) {
+            $batch->setAttribute('available_stock', (int) $batch->sku?->stocks?->sum(
+                fn ($stock) => max(0, (int) $stock->on_hand - (int) $stock->reserved)
+            ));
+
+            return $batch;
+        });
 
         return response()->json($batches);
     }

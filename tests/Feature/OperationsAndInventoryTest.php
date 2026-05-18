@@ -6,6 +6,7 @@ use App\Models\DispatchTimeSlot;
 use App\Models\DeliveryPartner;
 use App\Models\DispatchAssignment;
 use App\Models\DispatchRider;
+use App\Models\InventoryBatch;
 use App\Models\OperationArea;
 use App\Models\OperationCity;
 use App\Models\Order;
@@ -18,6 +19,7 @@ use Carbon\Carbon;
 use Database\Seeders\PermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
 use Tests\Feature\Support\CreatesCommerceData;
@@ -244,6 +246,35 @@ class OperationsAndInventoryTest extends TestCase
         $this->getJson('/api/admin/inventory/expiry-alerts?bucket=30_days')
             ->assertOk()
             ->assertJsonFragment(['id' => $batchId]);
+    }
+
+    public function test_inventory_backfill_command_creates_opening_batches_for_existing_stock(): void
+    {
+        $vendor = $this->makeUserWithRole('Vendor', 'vendor-inventory-backfill@test.com');
+        $commerce = $this->makeProductWithStock($vendor);
+
+        $this->assertSame(20, (int) Stock::query()->where('sku_id', $commerce['sku']->id)->sum('on_hand'));
+        $this->assertSame(0, InventoryBatch::query()->where('variant_id', $commerce['sku']->id)->count());
+
+        Artisan::call('inventory:backfill-batches');
+
+        $this->assertDatabaseHas('inventory_batches', [
+            'variant_id' => $commerce['sku']->id,
+            'quantity_received' => 20,
+            'quantity_remaining' => 20,
+            'source_type' => 'opening_stock',
+        ]);
+
+        $this->assertDatabaseHas('inventory_ledger_entries', [
+            'variant_id' => $commerce['sku']->id,
+            'movement_type' => 'opening_stock',
+            'quantity_in' => 20,
+            'reference_type' => 'inventory_batch',
+        ]);
+
+        Artisan::call('inventory:backfill-batches');
+
+        $this->assertSame(1, InventoryBatch::query()->where('variant_id', $commerce['sku']->id)->count());
     }
 
     public function test_inventory_selling_price_overrides_storefront_cart_and_order_prices(): void

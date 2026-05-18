@@ -51,7 +51,7 @@ class Sku extends Model
 
             Stock::firstOrCreate(
                 ['sku_id' => $sku->id, 'warehouse_id' => $warehouse->id],
-                ['on_hand' => max(0, (int) ($sku->stock_quantity ?? 0)), 'reserved' => 0]
+                ['on_hand' => 0, 'reserved' => 0]
             );
         });
     }

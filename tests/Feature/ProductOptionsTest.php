@@ -6,6 +6,7 @@ use App\Models\OrderItem;
 use App\Models\Sku;
 use App\Models\SkuImage;
 use App\Models\Stock;
+use App\Models\InventoryBatch;
 use Database\Seeders\PermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -79,6 +80,10 @@ class ProductOptionsTest extends TestCase
             'option_label' => '2kg (mudu)',
             'price' => 5000,
         ]);
+
+        $sku = Sku::query()->where('product_id', $productId)->where('option_label', '1kg (mudu)')->firstOrFail();
+        $this->assertSame(0, (int) Stock::query()->where('sku_id', $sku->id)->sum('on_hand'));
+        $this->assertSame(0, InventoryBatch::query()->where('variant_id', $sku->id)->count());
     }
 
     public function test_admin_can_update_and_deactivate_product_option(): void
@@ -86,6 +91,8 @@ class ProductOptionsTest extends TestCase
         $admin = $this->makeUserWithRole('Admin', 'admin-options-update@test.com');
         $vendor = $this->makeUserWithRole('Vendor', 'vendor-options-update@test.com');
         $commerce = $this->makeOptionedProductWithStock($vendor);
+
+        $secondOptionId = $commerce['options'][1]->id;
 
         Sanctum::actingAs($admin);
 
@@ -118,6 +125,7 @@ class ProductOptionsTest extends TestCase
         ])->assertOk();
 
         $this->assertDatabaseHas('skus', [
+            'id' => $secondOptionId,
             'product_id' => $commerce['product']->id,
             'option_label' => '2kg (mudu)',
             'active' => 0,

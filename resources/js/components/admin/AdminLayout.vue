@@ -144,8 +144,8 @@
           >
             <div class="flex items-center justify-between">
               <p class="font-semibold text-gray-900">Stock alerts</p>
-              <router-link to="/admin/inventory" class="text-xs font-medium text-primary" @click="showStockAlerts = false">
-                Restock
+              <router-link to="/admin/inventory-ledger" class="text-xs font-medium text-primary" @click="showStockAlerts = false">
+                Ledger
               </router-link>
             </div>
             <div v-if="stockAlertItems.length === 0" class="mt-4 text-sm text-gray-500">No out-of-stock products.</div>
@@ -182,11 +182,11 @@
           <div class="flex items-center gap-2">
             <i class="mdi mdi-alert-circle-outline text-lg"></i>
             <span>
-              {{ stockAlerts.out_of_stock_count }} product option{{ stockAlerts.out_of_stock_count === 1 ? '' : 's' }} out of stock. Restock now to keep storefront sales moving.
+              {{ stockAlerts.out_of_stock_count }} product option{{ stockAlerts.out_of_stock_count === 1 ? '' : 's' }} out of stock. Review the inventory ledger before restocking.
             </span>
           </div>
-          <router-link to="/admin/inventory" class="font-semibold text-red-900 hover:underline">
-            Open Inventory
+          <router-link to="/admin/inventory-ledger" class="font-semibold text-red-900 hover:underline">
+            Open Inventory Ledger
           </router-link>
         </div>
       </div>

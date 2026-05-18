@@ -26,7 +26,9 @@
             <tr>
               <th class="text-left p-3">Product</th>
               <th class="text-left p-3">SKU</th>
-              <th class="text-left p-3">Quantity</th>
+              <th class="text-left p-3">Qty Added</th>
+              <th class="text-left p-3">Qty Remaining</th>
+              <th class="text-left p-3">Available</th>
               <th class="text-left p-3">Cost</th>
               <th class="text-left p-3">Selling</th>
               <th class="text-left p-3">Expiry</th>
@@ -36,7 +38,9 @@
             <tr v-for="batch in batches" :key="batch.id" class="border-t border-DEFAULT">
               <td class="p-3">{{ batch.product?.title }}</td>
               <td class="p-3">{{ batch.sku?.sku_code }}</td>
-              <td class="p-3">{{ batch.quantity_remaining }}</td>
+              <td class="p-3">{{ formatQuantity(batch.quantity_received) }}</td>
+              <td class="p-3">{{ formatQuantity(batch.quantity_remaining) }}</td>
+              <td class="p-3">{{ formatQuantity(batch.available_stock) }}</td>
               <td class="p-3">{{ batch.cost_price }}</td>
               <td class="p-3">{{ batch.selling_price }}</td>
               <td class="p-3">{{ batch.expiry_date || 'N/A' }}</td>
@@ -87,6 +91,8 @@ const loadBatches = async () => {
   const { data } = await axios.get('/api/admin/inventory/batches', { params: { per_page: 100 } });
   batches.value = data.data || [];
 };
+
+const formatQuantity = (value) => new Intl.NumberFormat('en-NG').format(Math.max(0, Number(value || 0)));
 
 const addStock = async () => {
   saving.value = true;

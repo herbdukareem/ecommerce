@@ -12,6 +12,7 @@
             <tr>
               <th class="text-left p-3">Date</th>
               <th class="text-left p-3">Product</th>
+              <th class="text-left p-3">SKU</th>
               <th class="text-left p-3">Movement</th>
               <th class="text-left p-3">In</th>
               <th class="text-left p-3">Out</th>
@@ -23,6 +24,7 @@
             <tr v-for="entry in entries" :key="entry.id" class="border-t border-DEFAULT">
               <td class="p-3">{{ formatDate(entry.created_at) }}</td>
               <td class="p-3">{{ entry.product?.title }}</td>
+              <td class="p-3">{{ entry.sku?.option_label || entry.sku?.sku_code || 'N/A' }}</td>
               <td class="p-3">{{ entry.movement_type }}</td>
               <td class="p-3">{{ entry.quantity_in }}</td>
               <td class="p-3">{{ entry.quantity_out }}</td>

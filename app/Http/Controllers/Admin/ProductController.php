@@ -195,7 +195,7 @@ class ProductController extends Controller
                         'compare_at_price' => $variant['compare_at_price'] ?? null,
                         'cost' => $variant['cost_price'] ?? 0,
                         'cost_price' => $variant['cost_price'] ?? null,
-                        'stock_quantity' => max(0, (int) ($variant['stock_quantity'] ?? $variant['stock'] ?? 0)),
+                        'stock_quantity' => 0,
                         'low_stock_threshold' => isset($variant['low_stock_threshold']) ? (int) $variant['low_stock_threshold'] : null,
                         'weight' => $variant['weight'] ?? 0,
                         'unit' => $variant['unit'] ?? null,
@@ -391,35 +391,7 @@ class ProductController extends Controller
                     abort(422, 'At least one product option is required when has_options is enabled.');
                 }
 
-                // Delete existing SKUs and create new ones
-                $product->skus()->delete();
-
-                if (!empty($variants)) {
-                    foreach ($variants as $index => $variant) {
-                        $label = (string) ($variant['label'] ?? $variant['name'] ?? 'Option ' . ($index + 1));
-                        Sku::create([
-                            'product_id' => $product->id,
-                            'sku_code' => $variant['sku'] ?? 'SKU-' . strtoupper(Str::random(8)),
-                            'option_label' => $label,
-                            'option_code' => $variant['option_code'] ?? null,
-                            'price' => $variant['price'] ?? $data['price'],
-                            'compare_at_price' => $variant['compare_at_price'] ?? null,
-                            'cost' => $variant['cost_price'] ?? 0,
-                            'cost_price' => $variant['cost_price'] ?? null,
-                            'stock_quantity' => max(0, (int) ($variant['stock_quantity'] ?? $variant['stock'] ?? 0)),
-                            'low_stock_threshold' => isset($variant['low_stock_threshold']) ? (int) $variant['low_stock_threshold'] : null,
-                            'weight' => $variant['weight'] ?? 0,
-                            'unit' => $variant['unit'] ?? null,
-                            'image_path' => $variant['image_path'] ?? null,
-                            'sort_order' => isset($variant['sort_order']) ? (int) $variant['sort_order'] : $index,
-                            'active' => isset($variant['is_active']) ? (bool) $variant['is_active'] : true,
-                            'attributes' => ['name' => $label],
-                            'metadata' => $variant['metadata'] ?? null,
-                            'created_by' => $request->user()->id,
-                            'updated_by' => $request->user()->id,
-                        ]);
-                    }
-                }
+                $this->syncVariantSkus($product->fresh(), $variants, $data, $request);
             }
 
             return $product->load(['vendor', 'categories', 'skus.images', 'basketComponents.componentSku.product', 'basketComponents.unit']);
@@ -717,6 +689,72 @@ class ProductController extends Controller
     {
         $primary = $product->images->firstWhere('is_primary', true) ?: $product->images->sortBy('order')->first();
         $product->update(['image' => $primary?->image_url]);
+    }
+
+    protected function syncVariantSkus(Product $product, array $variants, array $data, Request $request): void
+    {
+        $seenSkuIds = [];
+
+        foreach ($variants as $index => $variant) {
+            $label = (string) ($variant['label'] ?? $variant['name'] ?? 'Option ' . ($index + 1));
+            $skuCode = trim((string) ($variant['sku'] ?? ''));
+            if ($skuCode === '') {
+                $skuCode = 'SKU-' . strtoupper(Str::random(8));
+            }
+
+            $sku = null;
+            if (!empty($variant['id'])) {
+                $sku = $product->skus()->whereKey((int) $variant['id'])->first();
+            }
+
+            if (!$sku) {
+                $sku = $product->skus()->where('sku_code', $skuCode)->first();
+            }
+
+            $costPrice = array_key_exists('cost_price', $variant) ? $variant['cost_price'] : $sku?->cost_price;
+            $cost = array_key_exists('cost_price', $variant) ? ($variant['cost_price'] ?? 0) : ($sku?->cost ?? 0);
+
+            $payload = [
+                'sku_code' => $skuCode,
+                'option_label' => $label,
+                'option_code' => array_key_exists('option_code', $variant) ? $variant['option_code'] : $sku?->option_code,
+                'price' => $variant['price'] ?? $data['price'] ?? $product->price,
+                'compare_at_price' => array_key_exists('compare_at_price', $variant) ? $variant['compare_at_price'] : $sku?->compare_at_price,
+                'cost' => $cost,
+                'cost_price' => $costPrice,
+                'stock_quantity' => 0,
+                'low_stock_threshold' => array_key_exists('low_stock_threshold', $variant) ? (int) $variant['low_stock_threshold'] : $sku?->low_stock_threshold,
+                'weight' => $variant['weight'] ?? $sku?->weight ?? 0,
+                'unit' => array_key_exists('unit', $variant) ? $variant['unit'] : $sku?->unit,
+                'image_path' => array_key_exists('image_path', $variant) ? $variant['image_path'] : $sku?->image_path,
+                'sort_order' => isset($variant['sort_order']) ? (int) $variant['sort_order'] : $index,
+                'active' => isset($variant['is_active']) ? (bool) $variant['is_active'] : true,
+                'attributes' => ['name' => $label],
+                'metadata' => $variant['metadata'] ?? null,
+                'updated_by' => $request->user()->id,
+            ];
+
+            if ($sku) {
+                $sku->update($payload);
+            } else {
+                $sku = Sku::create(array_merge($payload, [
+                    'product_id' => $product->id,
+                    'created_by' => $request->user()->id,
+                ]));
+            }
+
+            $seenSkuIds[] = $sku->id;
+        }
+
+        if (!empty($seenSkuIds)) {
+            $product->skus()
+                ->whereNotIn('id', $seenSkuIds)
+                ->update([
+                    'active' => false,
+                    'stock_quantity' => 0,
+                    'updated_by' => $request->user()->id,
+                ]);
+        }
     }
 
     /**
