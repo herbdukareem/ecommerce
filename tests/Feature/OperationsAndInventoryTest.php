@@ -235,6 +235,11 @@ class OperationsAndInventoryTest extends TestCase
 
         $batchId = $batchResponse->json('batch.id');
 
+        $skuRow = collect($this->getJson('/api/admin/inventory/skus')->assertOk()->json('skus'))
+            ->firstWhere('sku_id', $commerce['sku']->id);
+        $this->assertSame(45.0, (float) $skuRow['last_cost_price']);
+        $this->assertSame(80.0, (float) $skuRow['last_selling_price']);
+
         $this->getJson('/api/admin/inventory/ledger')
             ->assertOk()
             ->assertJsonFragment(['movement_type' => 'stock_addition']);

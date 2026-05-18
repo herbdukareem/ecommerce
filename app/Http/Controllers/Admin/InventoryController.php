@@ -21,7 +21,7 @@ class InventoryController extends Controller
 
     public function index(Request $request)
     {
-        $query = InventoryBatch::query()->with(['product:id,title', 'sku:id,sku_code', 'sku.stocks:id,sku_id,on_hand,reserved']);
+        $query = InventoryBatch::query()->with(['product:id,title', 'sku:id,sku_code']);
 
         if ($request->filled('sku_id')) {
             $query->where('variant_id', (int) $request->input('sku_id'));
@@ -35,14 +35,6 @@ class InventoryController extends Controller
             ->orderBy('expiry_date')
             ->orderByDesc('created_at')
             ->paginate((int) $request->input('per_page', 20));
-
-        $batches->getCollection()->transform(function (InventoryBatch $batch) {
-            $batch->setAttribute('available_stock', (int) $batch->sku?->stocks?->sum(
-                fn ($stock) => max(0, (int) $stock->on_hand - (int) $stock->reserved)
-            ));
-
-            return $batch;
-        });
 
         return response()->json($batches);
     }
@@ -247,7 +239,22 @@ class InventoryController extends Controller
 
     public function stockSkus(Request $request)
     {
-        $query = Sku::query()->with(['product:id,title', 'stocks:id,sku_id,on_hand,reserved']);
+        $query = Sku::query()
+            ->with(['product:id,title', 'stocks:id,sku_id,on_hand,reserved'])
+            ->addSelect([
+                'last_cost_price' => InventoryBatch::query()
+                    ->select('cost_price')
+                    ->whereColumn('variant_id', 'skus.id')
+                    ->orderByDesc('created_at')
+                    ->orderByDesc('id')
+                    ->limit(1),
+                'last_selling_price' => InventoryBatch::query()
+                    ->select('selling_price')
+                    ->whereColumn('variant_id', 'skus.id')
+                    ->orderByDesc('created_at')
+                    ->orderByDesc('id')
+                    ->limit(1),
+            ]);
 
         if ($request->filled('q')) {
             $term = $request->string('q');
@@ -267,6 +274,12 @@ class InventoryController extends Controller
                 'product_title' => $sku->product?->title,
                 'option_label' => $sku->display_label,
                 'available_stock' => $sku->stocks->sum(fn ($stock) => (int) $stock->on_hand - (int) $stock->reserved),
+                'last_cost_price' => $sku->last_cost_price !== null
+                    ? (float) $sku->last_cost_price
+                    : (float) ($sku->cost_price ?? $sku->cost ?? 0),
+                'last_selling_price' => $sku->last_selling_price !== null
+                    ? (float) $sku->last_selling_price
+                    : (float) ($sku->price ?? 0),
             ];
         });
 
