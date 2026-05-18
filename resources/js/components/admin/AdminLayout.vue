@@ -170,10 +170,7 @@
           </div>
 
           <!-- Quick Actions -->
-          <button class="hidden md:flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors">
-            <i class="mdi mdi-plus"></i>
-            <span class="text-sm font-medium">New Product</span>
-          </button>
+         
         </div>
       </header>
 
